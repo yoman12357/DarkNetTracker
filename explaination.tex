@@ -1,0 +1,868 @@
+\documentclass[12pt,a4paper]{report}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{setspace}
+\usepackage{titlesec}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{fancyhdr}
+\usepackage{caption}
+\usepackage{pdflscape}
+\usepackage{multirow}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue,
+    citecolor=blue,
+    pdftitle={Deep Technical Explanation of the Traffic Correlation Platform},
+    pdfauthor={Student Project Notes}
+}
+
+\onehalfspacing
+\setlength{\parskip}{0.45em}
+\setlength{\parindent}{0pt}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{Traffic Correlation Platform}
+\fancyhead[R]{Technical Explanation}
+\fancyfoot[C]{\thepage}
+\sloppy
+
+\titleformat{\chapter}[display]
+  {\normalfont\bfseries\Large}
+  {\chaptertitlename\ \thechapter}{12pt}{\Huge}
+
+\lstdefinestyle{codeblock}{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    backgroundcolor=\color{gray!8},
+    columns=fullflexible
+}
+
+\begin{document}
+
+\begin{titlepage}
+    \centering
+    \vspace*{1.5cm}
+    {\Large \textbf{Extended Technical Explanation}}\\[1.0cm]
+    {\Huge \textbf{Traffic Correlation-Based Location Estimation in Anonymous Networks}}\\[1.0cm]
+    {\Large File-by-File, Algorithm-by-Algorithm, Interview-Oriented Documentation}\\[1.8cm]
+
+    \begin{tabular}{>{\bfseries}p{5cm}p{8cm}}
+        Document Purpose: & Deep technical understanding for interview, viva, and resume discussion \\
+        Primary Audience: & Student, faculty evaluators, interviewers, internship reviewers \\
+        Project Type: & Controlled cybersecurity research and full-stack demonstration platform \\
+        Main Technologies: & Python, Express.js, Next.js, Tailwind CSS, SQLite, WebSockets, TShark \\
+    \end{tabular}
+
+    \vfill
+
+    \begin{tabular}{>{\bfseries}p{5cm}p{8cm}}
+        Prepared By: & \underline{\hspace{7cm}} \\
+        Roll Number: & \underline{\hspace{7cm}} \\
+        Department: & \underline{\hspace{7cm}} \\
+        Institution: & \underline{\hspace{7cm}} \\
+        Guide: & \underline{\hspace{7cm}} \\
+        Academic Year: & \underline{\hspace{7cm}} \\
+    \end{tabular}
+
+    \vfill
+    {\large \today}
+\end{titlepage}
+
+\pagenumbering{roman}
+\tableofcontents
+\listoftables
+\listoffigures
+
+\clearpage
+\pagenumbering{arabic}
+
+\chapter*{How to Use This Document}
+\addcontentsline{toc}{chapter}{How to Use This Document}
+This document is intentionally much more detailed than the primary project report. The goal is not only to describe what the project does, but to help the student explain the project under pressure. If an interviewer asks about architecture, algorithms, database design, WebSockets, packet capture, file uploads, evaluation metrics, design tradeoffs, or future scope, the answers can be derived from the material here. The document is organized as a technical study guide.
+
+The document has five main purposes. First, it explains the full system from the highest architectural level down to individual files. Second, it clarifies why each technology was chosen instead of other alternatives. Third, it documents the exact algorithmic pipeline from raw traffic metadata to probabilistic region estimation. Fourth, it highlights the boundaries of the project, especially the difference between controlled traffic analysis and real-world attribution claims. Fifth, it gives interview-oriented knowledge so that the project can be confidently discussed on a resume.
+
+\chapter{Project Identity}
+\section{One-Line Project Summary}
+The project is a controlled full-stack traffic-correlation platform that analyzes traffic metadata in simulation, replay, PCAP, and live-capture modes and estimates probable source regions through an explainable scoring and path-ranking pipeline.
+
+\section{Why This Project Exists}
+The project exists because anonymous-routing systems reduce direct traceability but do not remove all metadata. Even when payload contents remain encrypted, packet timing, packet size, sequence behavior, and burst patterns can still be analyzed. The project studies that problem in a controlled academic setting. It deliberately avoids claiming exact identity exposure, payload decryption, or operational surveillance. Instead, it turns metadata into structured events, extracts features, correlates candidate hops, ranks candidate paths, estimates likely origin regions, and presents the results through both a terminal and a full-stack web dashboard.
+
+\section{What Makes the Project Resume-Worthy}
+This project combines multiple engineering disciplines in a single coherent system. It includes Python systems programming, data modeling, correlation algorithms, API design, asynchronous job execution, WebSocket updates, authentication, SQLite persistence, file upload handling, frontend dashboard design, testing, and report writing. That breadth is valuable for internships because the project demonstrates both algorithmic thinking and product-level implementation.
+
+\section{Safe and Accurate Resume Framing}
+The safest and most accurate way to describe the project is:
+\begin{quote}
+Built a full-stack controlled traffic-correlation platform using Python, Express.js, Next.js, SQLite, and TShark to analyze simulated, replayed, PCAP, and live traffic metadata and estimate probable source regions in a cybersecurity research setting.
+\end{quote}
+
+That wording is strong because it is technically accurate and ethically defensible.
+
+\chapter{Scope, Promise, and Boundaries}
+\section{What the System Does}
+The system performs controlled traffic analysis in four modes. In simulation mode, it creates synthetic Tor-like sessions with deterministic suspicious traffic patterns. In replay mode, it reads structured datasets from JSONL or CSV files. In PCAP mode, it uses TShark to convert packet captures into event-level traffic records and then into candidate sessions. In live mode, it captures packet metadata from a selected interface using TShark and processes it through the same PCAP-derived pipeline. Across all modes, the downstream analysis logic remains the same: feature extraction, hop correlation, path ranking, region estimation, evaluation, and result presentation.
+
+\section{What the System Does Not Do}
+The project does not decrypt encrypted payloads. It does not identify real individuals. It does not claim real-world deanonymization capability. It does not bypass security controls. It does not attempt to become an operational surveillance product. Those boundaries matter both ethically and technically. Real-world attribution is much harder, noisier, and more sensitive than controlled academic demonstration.
+
+\section{Why Those Boundaries Matter in an Interview}
+If an interviewer asks why the project is scoped this way, the correct answer is that meaningful engineering work can still be done without overclaiming capability. The platform demonstrates metadata correlation, interface design, back-end orchestration, and capture processing, but it avoids presenting uncertain inference as guaranteed truth. This is the correct research posture.
+
+\chapter{End-to-End System Walkthrough}
+\section{High-Level Pipeline}
+The core pipeline of the project can be written as:
+\[
+\text{Input Source} \rightarrow \text{Raw Events} \rightarrow \text{Feature Events}
+\rightarrow \text{Hop Correlations} \rightarrow \text{Ranked Paths}
+\rightarrow \text{Region Estimates} \rightarrow \text{Evaluation and UI}
+\]
+
+The implementation is modular because each stage has a single responsibility. Inputs are acquired by the \texttt{capture} package. The \texttt{processing} package transforms and scores the traffic. The \texttt{service.py} module orchestrates the pipeline. The terminal renderer and frontend consume the structured output.
+
+\section{Request Flow in the Full Stack}
+When a user clicks a button on the frontend, the browser sends a request to the Express backend. The backend either creates a simulation session directly, accepts a dataset upload, or creates a live-capture request. Each request is stored in SQLite as a session and enqueued as a job. The queue invokes the Python engine by spawning \texttt{engine\_api.py}. The Python process returns JSON on standard output. The backend stores that JSON result in the database and broadcasts a WebSocket message to connected clients. The frontend then refreshes the session list and the selected session details, allowing the user to inspect estimates, paths, correlations, and a terminal-style report.
+
+\section{Why This Architecture Is Good for Demonstration}
+This architecture separates concerns cleanly. The browser is not responsible for analysis logic. The backend is not responsible for implementing the traffic-correlation math directly. The Python engine is not responsible for UI rendering. Because of that separation, the system is easier to explain, easier to extend, and easier to test.
+
+\chapter{Technology Stack: What Was Used and Why}
+\section{Python}
+Python was chosen for the analysis engine because it is productive for data manipulation, event modeling, and algorithm development. The code is readable, fast enough for this project scale, and ideal for academic demonstration. Python also integrates well with command-line workflows, which makes it natural for both direct terminal usage and backend child-process execution.
+
+\section{Express.js}
+Express.js was chosen for the backend because it is lightweight, widely understood, and sufficient for API construction, upload handling, and authentication middleware. The project did not need a highly opinionated framework; it needed a pragmatic request router with middleware support. Express fits that requirement well.
+
+\section{Next.js}
+Next.js was chosen for the frontend because it provides a strong React-based application structure while remaining convenient to run locally. The app uses the App Router layout and a client-side dashboard page. The choice is appropriate for internship discussion because it shows familiarity with contemporary frontend patterns.
+
+\section{Tailwind CSS}
+Tailwind CSS was chosen for fast, consistent visual styling. The project does not use a heavy component library. Instead, it styles the dashboard through utility classes and a small custom CSS variable system in \texttt{globals.css}. This makes the interface visually distinct while keeping the style layer understandable.
+
+\section{SQLite}
+SQLite was selected because it is lightweight, file-based, and sufficient for local persistence. It avoids the operational complexity of running a separate database service while still demonstrating real persistence instead of in-memory-only session storage.
+
+\section{WebSockets}
+WebSockets were used because jobs are asynchronous. The frontend needs to know when queued jobs become running, completed, or failed without requiring constant manual refresh. WebSocket updates provide a clean solution for live progress and session refresh behavior.
+
+\section{TShark}
+TShark was selected because it provides robust packet metadata extraction from both PCAP files and live interfaces. Building a packet parser from scratch would have added substantial complexity and risk. TShark externalizes the low-level packet parsing problem and allows the project to focus on traffic-analysis logic.
+
+\section{node:sqlite}
+The backend uses the \texttt{node:sqlite} module, specifically \texttt{DatabaseSync}. This is an interesting technical decision because it keeps the backend dependency footprint small and uses built-in runtime capabilities available in modern Node environments. For an interview, that demonstrates awareness of evolving platform features.
+
+\chapter{Repository Map}
+\section{Top-Level Structure}
+The repository contains several categories of files:
+\begin{itemize}[leftmargin=1.5em]
+    \item root Python and documentation files,
+    \item capture and processing packages,
+    \item backend source files,
+    \item frontend source files,
+    \item data and tests,
+    \item logs and deployment artifacts.
+\end{itemize}
+
+\section{Conceptual Directory Responsibilities}
+\begin{longtable}{p{4cm}p{10cm}}
+\toprule
+\textbf{Path} & \textbf{Responsibility} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{Path} & \textbf{Responsibility} \\
+\midrule
+\endhead
+\texttt{capture/} & Input acquisition and conversion from simulation, replay, PCAP, and live traffic \\
+\texttt{processing/} & Feature extraction, scoring, path construction, estimation, and evaluation \\
+\texttt{backend/} & API server, auth, persistence, job queue, Python engine execution, WebSockets \\
+\texttt{frontend/} & Browser UI, controls, session list, tables, charts, and report rendering \\
+\texttt{tests/} & Automated validation of pipeline behavior and parser behavior \\
+\texttt{data/} & Node registry and a legacy CSV artifact \\
+\texttt{logs/} & Optional JSONL logs produced by the pipeline \\
+\bottomrule
+\end{longtable}
+
+\chapter{Core Data Model}
+\section{Why the Data Model Matters}
+The project is easier to explain once the data model is understood. The entire pipeline transforms information through a series of progressively richer representations. The input begins as packet-like events or synthetic session steps. Those become feature-enriched records. Those feature records generate correlation candidates. Correlation candidates become ranked paths. Ranked paths support region estimates. Estimates and paths then support evaluation.
+
+\section{RawEvent}
+The \texttt{RawEvent} dataclass in \texttt{models.py} is the base observation unit used by the pipeline. It contains timestamp, packet size, direction, session ID, node ID, node type, source IP, destination IP, sequence number, region hint, and label. It also includes protocol, source and destination ports, flow ID, event span, and packet count.
+
+Interview explanation: a \texttt{RawEvent} is not necessarily one raw network packet in every mode. In simulation and replay it usually corresponds to one logical path step. In PCAP and live mode it may represent an aggregated burst derived from one or more packets.
+
+\section{FeatureEvent}
+The \texttt{FeatureEvent} dataclass extends the meaning of a raw event by including derived properties such as \texttt{packet\_delta} and \texttt{size\_bucket}. That is important because correlation is usually more meaningful on transformed features than on absolute raw values.
+
+\section{CorrelationCandidate}
+The \texttt{CorrelationCandidate} dataclass captures a possible link between two adjacent stages, either ENTRY to MIDDLE or MIDDLE to EXIT. It stores raw deltas, normalized similarities, final score, session and label relationships, and node metadata.
+
+\section{RankedPath}
+The \texttt{RankedPath} dataclass represents a three-stage or partial path inferred from the correlation graph. It stores entry, middle, and exit node IDs; regions; path score; suspiciousness; whether sessions overlap; session ID; and whether the path is complete or partial.
+
+\section{RegionEstimate}
+The \texttt{RegionEstimate} dataclass is the final probabilistic output for a region. It stores the region label, normalized confidence score, support value, and number of supporting paths.
+
+\section{EvaluationSummary}
+The \texttt{EvaluationSummary} dataclass stores meta-level validation results such as suspicious session count, number of correctly estimated sessions, session accuracy, true origin region, and predicted origin region.
+
+\chapter{Configuration Logic}
+\section{Purpose of \texttt{config.py}}
+The \texttt{config.py} file centralizes thresholds, weights, priors, and logging paths. This is an important design decision because it avoids scattering hardcoded values across multiple files. Configuration-driven systems are easier to tune, easier to justify in a viva, and easier to extend.
+
+\section{Thresholds and Weights}
+The project uses:
+\begin{itemize}[leftmargin=1.5em]
+    \item \texttt{time\_threshold = 0.6},
+    \item \texttt{size\_threshold = 160},
+    \item \texttt{time\_weight = 0.45},
+    \item \texttt{size\_weight = 0.35},
+    \item \texttt{sequence\_weight = 0.20},
+    \item \texttt{score\_threshold = 0.70}.
+\end{itemize}
+
+These values reflect a clear modeling assumption: time similarity is the most important factor, size similarity is the next most important factor, and sequence logic is a supportive constraint rather than the dominant signal.
+
+\section{Capture-Specific Relaxation}
+One of the more thoughtful parts of the design is that captured traffic uses relaxed thresholds. The configuration contains:
+\begin{itemize}[leftmargin=1.5em]
+    \item \texttt{capture\_time\_threshold\_multiplier},
+    \item \texttt{capture\_size\_threshold\_multiplier},
+    \item \texttt{capture\_score\_threshold}.
+\end{itemize}
+This exists because simulation and replay are cleaner than real traffic. Real capture data needs looser matching to avoid collapsing to zero results.
+
+\section{Region Priors}
+The project includes simple region priors. In the current implementation they are neutral, but the architecture supports future non-uniform priors. This is useful in interviews because it shows that the estimator is written to support probabilistic weighting and not only raw score accumulation.
+
+\chapter{Algorithmic Pipeline}
+\section{Stage 1: Event Acquisition}
+The first stage depends on the mode. Simulation generates deterministic sessions. Replay loads structured rows from a file. PCAP runs TShark and parses fields. Live capture also runs TShark but on an interface and for a duration. The result in all cases is a list of \texttt{RawEvent} objects or a representation that is converted into those objects.
+
+\section{Stage 2: Feature Extraction}
+The \texttt{extract\_features()} function in \texttt{processing/features.py} computes packet delta and size bucket and returns \texttt{FeatureEvent} instances. The packet delta is session-aware and computed in sorted session order. Size bucket compresses packet sizes into coarser classes, which can be useful for comparison and future extensions.
+
+\section{Stage 3: Hop Correlation}
+The \texttt{correlate\_hops()} function in \texttt{processing/correlator.py} groups events by node type and compares candidate pairs across adjacent stages. It only compares ENTRY to MIDDLE and MIDDLE to EXIT. It enforces temporal ordering and rejects pairs that exceed effective thresholds. It then computes normalized similarities and a weighted score. Session and label bonuses adjust the score. Captured traffic may receive a protocol-based bonus if protocols match.
+
+\section{Stage 4: Path Construction}
+The \texttt{build\_ranked\_paths()} function in \texttt{processing/graph.py} joins compatible first-hop and second-hop correlations through a shared middle node. It produces a complete path only if session overlap logic is satisfied. If no complete path exists, it preserves partial paths from ENTRY to MIDDLE. This fallback is a pragmatic design choice made to avoid returning a totally empty result on sparse PCAP captures.
+
+\section{Stage 5: Region Estimation}
+The \texttt{estimate\_regions()} function in \texttt{processing/estimator.py} sums path support by entry region, optionally multiplies suspicious paths by a bias factor, applies region priors, normalizes the totals, and returns a ranked list of \texttt{RegionEstimate} instances.
+
+\section{Stage 6: Evaluation}
+The \texttt{evaluate\_estimates()} function in \texttt{processing/evaluator.py} derives a true suspicious origin region from suspicious entry events if such labels exist. It then computes how often ranked suspicious paths align with that region. This metric is strongest for simulation and replay, because they are labeled. It is less meaningful for unlabeled or weakly labeled live/PCAP scenarios.
+
+\section{Stage 7: Presentation}
+The terminal renderer in \texttt{ui/terminal.py} formats the summary into a readable plain-text report. The frontend renders the same underlying result as metrics, tables, charts, and a terminal-style text panel.
+
+\chapter{Mathematics Behind the Scoring}
+\section{Time Similarity}
+The time similarity formula is:
+\[
+\text{time\_similarity} = \frac{1}{1 + \frac{\Delta t}{T}}
+\]
+This is a monotonically decreasing function. When the observed time gap is close to zero, the value approaches 1. As the time difference grows toward the threshold, the similarity decays smoothly. This is a practical choice because it avoids brittle step-function behavior.
+
+\section{Size Similarity}
+The size similarity formula is:
+\[
+\text{size\_similarity} = \frac{1}{1 + \frac{\Delta s}{S}}
+\]
+It has the same interpretation as time similarity but is applied to packet-size difference. Small differences imply stronger similarity.
+
+\section{Sequence Similarity}
+The sequence similarity formula is:
+\[
+\text{sequence\_similarity} = \frac{1}{1 + \text{sequence\_gap}}
+\]
+In practice the implementation also constrains candidates to expected adjacent sequence numbers, making sequence more like a gate plus a supporting score.
+
+\section{Combined Score}
+The combined score is:
+\[
+\text{score} = w_t \cdot \text{time\_similarity}
++ w_s \cdot \text{size\_similarity}
++ w_q \cdot \text{sequence\_similarity}
++ \text{bonuses} - \text{penalties}
+\]
+The system then clamps the result into the range $[0,1]$. Clamping was added after earlier behavior allowed scores above 1.0, which made the output less realistic.
+
+\section{Why This Is Good for an Interview}
+This algorithm is easy to explain because it is transparent and interpretable. Unlike a black-box model, the candidate can explain exactly why a path received a high score: small timing gap, small size gap, correct stage ordering, matching session behavior, and possibly matching protocol in captured traffic.
+
+\chapter{Simulation Pipeline}
+\section{Purpose}
+Simulation is the cleanest mode. It generates deterministic Tor-like sessions with entry, middle, and exit nodes. Every fourth session is labeled suspicious and pushed toward a suspicious origin region.
+
+\section{Implementation Logic}
+The \texttt{generate\_simulated\_events()} function in \texttt{capture/simulate.py} uses a seeded random number generator. The deterministic seed makes the output reproducible. Suspicious sessions are biased to \texttt{DE}. Normal sessions are assigned other regions. Packet size and timing jitter are also different between suspicious and normal traffic, creating stronger correlation patterns for suspicious traffic.
+
+\section{Why It Matters}
+Simulation is useful because it validates the mathematical pipeline independent of noisy capture conditions. If the engine fails in simulation, the core logic is wrong. If the engine succeeds in simulation but struggles in PCAP, the issue lies in real-data conversion rather than the abstract correlation logic.
+
+\chapter{Replay Pipeline}
+\section{Purpose}
+Replay mode ensures deterministic file-based analysis. The dataset is not synthesized at runtime; it is loaded from structured files and passed into the same downstream logic as simulation and capture modes.
+
+\section{Implementation Logic}
+The \texttt{run\_replay()} function in \texttt{capture/replay.py} decides whether to read JSONL or CSV. JSONL is handled by \texttt{read\_jsonl()} and CSV by \texttt{read\_csv\_rows()}. Both return dictionaries that are converted into \texttt{RawEvent} objects.
+
+\section{Why It Matters}
+Replay mode demonstrates parser consistency and stable outputs. Because the dataset does not vary, it is a good mode for debugging UI or backend issues. If replay differs between runs, that indicates a software problem rather than environmental noise.
+
+\chapter{PCAP Pipeline}
+\section{Purpose}
+PCAP mode is the most realistic offline mode. It takes packet capture files, extracts metadata using TShark, converts packets into bursts, groups bursts into clusters, converts clusters into candidate sessions, and maps those sessions into stage-based events for the main pipeline.
+
+\section{Why PCAP Was the Hardest Part}
+Real PCAP data is noisy. Some packets are DNS, some are TCP ACKs, some are loopback traffic, some are very short-lived flows, and some do not align neatly with a three-stage route abstraction. Early versions of the parser over-compressed the data and returned only a few events. The parser was refined so that one rich cluster can now produce multiple candidate sequences instead of just one.
+
+\section{Important Heuristics}
+The PCAP parser uses several heuristics:
+\begin{itemize}[leftmargin=1.5em]
+    \item flow grouping by ordered endpoint pair and protocol,
+    \item burst splitting using idle gaps,
+    \item burst clustering using time proximity,
+    \item suspiciousness scoring on burst size, duration, and packet count,
+    \item filtering of loopback-only traffic when more informative bursts exist,
+    \item sequence chunking into groups of up to three bursts.
+\end{itemize}
+
+\section{Why These Heuristics Are Acceptable Here}
+These heuristics are acceptable because this is a controlled academic project. They are explicit and explainable. The goal is not to present universal forensic truth. The goal is to show a working translation from messy packet metadata into structured correlation candidates.
+
+\chapter{Live Capture Pipeline}
+\section{Purpose}
+Live mode exists to make the system demonstrable in real time. It allows the user to click a button in the browser, choose an interface and duration, generate traffic during the capture window, and then inspect the resulting session.
+
+\section{Implementation Logic}
+The live pipeline is deliberately simple: \texttt{capture/live.py} calls the same TShark extraction helper used by PCAP and then calls the same row-to-event conversion logic. This is a strong design choice because it avoids implementing two different parsing systems for offline and live captured traffic.
+
+\section{Demonstration Advice}
+For a live demo, it is best to capture for a short period such as 8 seconds and generate traffic in another terminal using \texttt{ping} and \texttt{curl}. Long passive captures may produce sparse or uninteresting results.
+
+\chapter{Backend Architecture}
+\section{Express Server}
+The backend is started by \texttt{backend/server.js}. It creates the Express app, HTTP server, and WebSocket server; configures CORS and JSON parsing; creates an uploads directory; wires Multer storage; and exposes the API routes.
+
+\section{Authentication Flow}
+The backend exposes \texttt{/api/bootstrap} to reveal local demo credentials. The frontend uses that only for convenience. Real authentication occurs through \texttt{/api/auth/login}, which issues a random token stored in SQLite. Protected routes are covered by \texttt{requireAuth}.
+
+\section{Session Lifecycle}
+Every user-triggered action creates a session with an ID, mode, input label, status, config, and later a result or error. A corresponding job is queued in the \texttt{jobs} table. When the queue processes the job, the session changes from queued to running to completed or failed.
+
+\section{Why the Queue Exists}
+The queue exists because the backend should not block the request-response lifecycle waiting for Python analysis. Queueing also gives the UI a cleaner status model. This is especially important for live capture and larger uploads.
+
+\chapter{Frontend Architecture}
+\section{Single-Page Dashboard Design}
+The frontend is a single client-rendered dashboard page. This is a good choice for a small internal tool because all controls and results are visible together. The user does not need to navigate across many pages to understand the system.
+
+\section{State Management}
+The frontend uses React state to track sessions, selected session ID, selected session details, simulation form fields, live form fields, replay file state, authentication state, and loading state. It then uses \texttt{useMemo} to derive table-ready arrays from the selected session.
+
+\section{WebSocket Integration}
+The frontend opens a WebSocket connection after login. Whenever a session is created or updated, the socket handler refreshes the session list and the selected session. This makes the dashboard feel live without introducing a full state-management library.
+
+\chapter{Why the Project Has Both CLI and Web UI}
+The CLI remains useful because it is the simplest path to validate the engine. It gives deterministic text output and is useful during debugging, testing, and academic explanation. The web UI makes the project easier to present, easier to inspect, and more suitable for a non-terminal audience. Keeping both interfaces is a sign of good engineering modularity because both depend on the same service layer instead of duplicating logic.
+
+\chapter{File-by-File Explanation}
+\section{How to Read This Chapter}
+The following chapters explain every meaningful file in the repository. For each file, the explanation covers purpose, why it exists, what problem it solves, what important functions it contains, how it interacts with other files, and how to explain it in an interview.
+
+\chapter{Root-Level Files}
+\section{\texttt{README.md}}
+\textbf{Purpose.} The README is the public-facing entry point to the repository. It summarizes the project, scope, stack, setup steps, API endpoints, and demo flow.
+
+\textbf{Why it exists.} A good README lowers the onboarding cost for reviewers, faculty, and recruiters. It tells someone what the project is before they dive into the code.
+
+\textbf{Interview explanation.} If asked why README quality matters, the answer is that good engineering includes communication and documentation, not only source code.
+
+\section{\texttt{main.py}}
+\textbf{Purpose.} This is the CLI entry point for human-readable terminal output.
+
+\textbf{What it does.} It parses arguments such as mode, dataset, sessions, seed, interface, capture duration, and top-k setting. It then calls \texttt{run\_pipeline()} and prints the report.
+
+\textbf{Why it exists.} It provides a clean command-line interface independent of the web application.
+
+\textbf{Important design point.} The CLI does not reimplement the pipeline. It delegates to \texttt{service.py}. This is good separation of concerns.
+
+\section{\texttt{engine\_api.py}}
+\textbf{Purpose.} This is the structured JSON interface for the Python engine.
+
+\textbf{What it does.} It parses command-line arguments like \texttt{main.py}, but instead of printing a terminal report, it prints machine-readable JSON.
+
+\textbf{Why it exists.} The backend needs a structured contract with Python. Parsing plain text would be fragile. JSON is the correct choice.
+
+\textbf{Interview explanation.} This file is the bridge between a Python analytics engine and a Node backend.
+
+\section{\texttt{service.py}}
+\textbf{Purpose.} This is the orchestration layer of the analysis engine.
+
+\textbf{What it does.} It selects the input source based on mode, runs feature extraction, correlation, path ranking, estimation, evaluation, optional logging, and final report rendering. It returns a structured dictionary containing meta, summary, estimates, evaluation, paths, correlations, sampled raw events, and the terminal report.
+
+\textbf{Why it exists.} Without this file, the project would duplicate workflow logic between the CLI and API bridge.
+
+\section{\texttt{models.py}}
+\textbf{Purpose.} Defines all core data structures used in the pipeline.
+
+\textbf{Why it matters.} The project becomes much easier to reason about because each pipeline stage transforms a specific dataclass rather than passing around loose dictionaries everywhere.
+
+\section{\texttt{config.py}}
+\textbf{Purpose.} Centralized configuration for thresholds, weights, priors, and log locations.
+
+\textbf{Why it matters.} It makes tuning and reasoning about the algorithm possible.
+
+\section{\texttt{requirements.txt}}
+\textbf{Purpose.} Placeholder for Python dependencies. In the current repository it is empty.
+
+\textbf{Why it is still notable.} Even empty files can indicate intended package-management structure. In future, dependencies like \texttt{scapy} or analysis utilities may be listed here.
+
+\section{\texttt{package.json}}
+\textbf{Purpose.} Root script runner for convenience commands.
+
+\textbf{What it contains.} Scripts for backend dev, frontend dev, and Python tests.
+
+\section{\texttt{docker-compose.yml}}
+\textbf{Purpose.} Container orchestration for frontend and backend.
+
+\textbf{Why it matters.} It shows that the project was designed with deployment and reproducibility in mind, even though live capture remains a host-sensitive feature.
+
+\section{\texttt{main.tex}}
+\textbf{Purpose.} The academic report.
+
+\textbf{Why it matters.} It shows the project is not only code-complete but also documentation-ready for institutional submission.
+
+\section{\texttt{explaination.tex}}
+\textbf{Purpose.} This document.
+
+\textbf{Why it matters.} It is a deep technical companion for interviews, resume discussion, and exhaustive understanding.
+
+\section{\texttt{analyze.py}}
+\textbf{Purpose.} A legacy exploratory script that loads \texttt{data/network\_features.csv} using Pandas, prints basic statistics, and plots protocol distribution.
+
+\textbf{Why it exists.} It likely reflects an early experimentation phase before the full modular platform was built.
+
+\textbf{Interview explanation.} This file demonstrates project evolution: the student started with exploratory analysis and later built a far more structured system.
+
+\section{\texttt{sniffer.py}}
+\textbf{Purpose.} A legacy packet sniffer based on Scapy.
+
+\textbf{What it does.} Captures packets, extracts a few basic features, and saves them to CSV.
+
+\textbf{Why it matters.} Like \texttt{analyze.py}, it shows the project’s prototype lineage. It is not the main production path now, but it documents the earlier approach.
+
+\chapter{Capture Package}
+\section{\texttt{capture/\_\_init\_\_.py}}
+\textbf{Purpose.} Package marker.
+
+\section{\texttt{capture/simulate.py}}
+\textbf{Purpose.} Synthetic event generation.
+
+\textbf{Important functions.} \texttt{generate\_simulated\_events()} and \texttt{\_pick\_path()}.
+
+\textbf{Why it matters.} It provides deterministic and explainable synthetic data for algorithm validation.
+
+\section{\texttt{capture/replay.py}}
+\textbf{Purpose.} Replay loader for JSONL and CSV files.
+
+\textbf{Important function.} \texttt{run\_replay()}.
+
+\textbf{Why it matters.} It ensures the same engine can operate on file-based historical data.
+
+\section{\texttt{capture/pcap.py}}
+\textbf{Purpose.} PCAP parsing and conversion into \texttt{RawEvent} instances.
+
+\textbf{Important pieces.} \texttt{PacketRecord}, \texttt{FlowBurst}, \texttt{load\_pcap\_events()}, \texttt{rows\_to\_events()}, \texttt{\_extract\_tshark\_rows()}, \texttt{\_rows\_to\_packets()}, \texttt{\_packets\_to\_events()}, \texttt{\_build\_flow\_bursts()}, \texttt{\_cluster\_bursts()}, \texttt{\_cluster\_to\_sequences()}, and helper functions for mapping, classification, flow keys, and protocol detection.
+
+\textbf{Why it matters.} This file is the bridge from low-level captured packets to the higher-level path abstraction used by the core algorithm. It is also the most heuristic-heavy file in the repository.
+
+\textbf{Interview explanation.} This is the best file to discuss when asked about turning raw system data into structured algorithmic inputs.
+
+\section{\texttt{capture/live.py}}
+\textbf{Purpose.} Live capture orchestration using TShark.
+
+\textbf{Why it matters.} It reuses the PCAP parsing logic rather than creating a separate interpretation path.
+
+\chapter{Processing Package}
+\section{\texttt{processing/\_\_init\_\_.py}}
+\textbf{Purpose.} Package marker.
+
+\section{\texttt{processing/features.py}}
+\textbf{Purpose.} Feature derivation layer.
+
+\textbf{Why it matters.} It moves the system from raw observations to comparison-ready records.
+
+\section{\texttt{processing/correlator.py}}
+\textbf{Purpose.} Candidate scoring engine.
+
+\textbf{Why it matters.} This is the core mathematical heart of the system.
+
+\section{\texttt{processing/graph.py}}
+\textbf{Purpose.} Path construction from hop-level candidates.
+
+\textbf{Why it matters.} It transforms pairwise edges into route-level objects, which are easier to reason about and estimate from.
+
+\section{\texttt{processing/estimator.py}}
+\textbf{Purpose.} Region support aggregation and normalization.
+
+\textbf{Why it matters.} It converts path-level evidence into the final user-facing estimate.
+
+\section{\texttt{processing/evaluator.py}}
+\textbf{Purpose.} Validation summary.
+
+\textbf{Why it matters.} It provides a disciplined way to discuss how good the output is, especially on labeled data.
+
+\chapter{Data Package and Artifacts}
+\section{\texttt{data/\_\_init\_\_.py}}
+\textbf{Purpose.} Package marker.
+
+\section{\texttt{data/nodes.py}}
+\textbf{Purpose.} Registry of known entry, middle, and exit nodes plus regions and IPs.
+
+\textbf{Why it matters.} Simulation and PCAP mapping need a stable node universe to produce path-like outputs.
+
+\section{\texttt{data/network\_features.csv}}
+\textbf{Purpose.} Legacy data artifact used by \texttt{analyze.py}.
+
+\textbf{Why it matters.} It records the earlier exploratory phase of the project.
+
+\chapter{UI Package}
+\section{\texttt{ui/\_\_init\_\_.py}}
+\textbf{Purpose.} Package marker.
+
+\section{\texttt{ui/terminal.py}}
+\textbf{Purpose.} Human-readable terminal report renderer.
+
+\textbf{Why it matters.} It provides a compact engineering-friendly view of the pipeline output and is reused conceptually by the dashboard’s terminal report area.
+
+\chapter{Utility Files}
+\section{\texttt{utils/\_\_init\_\_.py}}
+\textbf{Purpose.} Package marker.
+
+\section{\texttt{utils/io.py}}
+\textbf{Purpose.} File IO helpers for JSONL and CSV.
+
+\textbf{Why it matters.} Centralizing read and write logic keeps the capture modules smaller and easier to test.
+
+\chapter{Backend Files}
+\section{\texttt{backend/package.json}}
+\textbf{Purpose.} Backend package manifest.
+
+\textbf{Dependencies.} \texttt{express}, \texttt{cors}, \texttt{multer}, and \texttt{ws}.
+
+\section{\texttt{backend/server.js}}
+\textbf{Purpose.} Main backend entry point.
+
+\textbf{Why it matters.} This is the server process that creates the HTTP API and WebSocket server.
+
+\section{\texttt{backend/auth.js}}
+\textbf{Purpose.} Authentication helper layer.
+
+\textbf{Why it matters.} It isolates token extraction, login, and route protection from route definitions.
+
+\section{\texttt{backend/db.js}}
+\textbf{Purpose.} SQLite schema initialization and data access layer.
+
+\textbf{Why it matters.} It provides real persistence and a clear session model.
+
+\section{\texttt{backend/queue.js}}
+\textbf{Purpose.} Queued background execution of sessions.
+
+\textbf{Why it matters.} It decouples request acceptance from long-running analysis.
+
+\section{\texttt{backend/pythonRunner.js}}
+\textbf{Purpose.} Launches the Python engine and parses JSON output.
+
+\textbf{Why it matters.} This file is the cross-language bridge.
+
+\section{\texttt{backend/socketHub.js}}
+\textbf{Purpose.} Centralized WebSocket upgrade and broadcast logic.
+
+\textbf{Why it matters.} It prevents WebSocket concerns from polluting route and queue code.
+
+\section{\texttt{backend/Dockerfile}}
+\textbf{Purpose.} Backend containerization instructions.
+
+\section{\texttt{backend/.env.example}}
+\textbf{Purpose.} Example backend configuration for demo credentials and runtime settings.
+
+\chapter{Frontend Files}
+\section{\texttt{frontend/package.json}}
+\textbf{Purpose.} Frontend package manifest.
+
+\section{\texttt{frontend/app/layout.js}}
+\textbf{Purpose.} Root layout wrapper and metadata declaration.
+
+\section{\texttt{frontend/app/globals.css}}
+\textbf{Purpose.} Global color palette, base styling, panel styling, and page background design.
+
+\section{\texttt{frontend/app/page.js}}
+\textbf{Purpose.} Entire dashboard UI.
+
+\textbf{Why it matters.} This file contains authentication UI, form controls, uploads, live capture trigger, session listing, WebSocket integration, derived data rows, and visual panels.
+
+\textbf{Interview explanation.} This file demonstrates frontend state orchestration, data fetching, and result presentation in a single coherent page.
+
+\section{\texttt{frontend/jsconfig.json}}
+\textbf{Purpose.} Frontend project configuration.
+
+\section{\texttt{frontend/next.config.mjs}}
+\textbf{Purpose.} Next.js runtime configuration.
+
+\section{\texttt{frontend/postcss.config.mjs}}
+\textbf{Purpose.} Tailwind/PostCSS integration.
+
+\section{\texttt{frontend/Dockerfile}}
+\textbf{Purpose.} Frontend containerization instructions.
+
+\section{\texttt{frontend/.env.example}}
+\textbf{Purpose.} Example frontend environment configuration, primarily the API base URL.
+
+\chapter{Tests and Sample Data}
+\section{\texttt{tests/test\_pipeline.py}}
+\textbf{Purpose.} Validates the simulation and replay pipeline.
+
+\textbf{Why it matters.} It checks that the engine still produces sensible estimates and that CSV and JSONL replay match.
+
+\section{\texttt{tests/test\_pcap\_parser.py}}
+\textbf{Purpose.} Validates that PCAP row parsing produces clustered events with sequence information and flow IDs.
+
+\section{\texttt{tests/sample\_data/replay\_dataset.jsonl}}
+\textbf{Purpose.} Structured replay fixture in JSONL format.
+
+\section{\texttt{tests/sample\_data/replay\_dataset.csv}}
+\textbf{Purpose.} Structured replay fixture in CSV format.
+
+\section{\texttt{tests/sample\_data/live\_capture.pcap}}
+\textbf{Purpose.} Earlier PCAP sample, useful mainly as a historical/debug fixture.
+
+\section{\texttt{tests/sample\_data/better\_capture.pcap}}
+\textbf{Purpose.} Intermediate PCAP sample used during parser refinement.
+
+\section{\texttt{tests/sample\_data/better\_capture2.pcap}}
+\textbf{Purpose.} Stronger PCAP sample that currently demonstrates the refined parser effectively.
+
+\chapter{Logs and Outputs}
+\section{\texttt{logs/raw\_events.jsonl}}
+Optional log of raw events.
+
+\section{\texttt{logs/features.jsonl}}
+Optional log of feature events.
+
+\section{\texttt{logs/correlations.jsonl}}
+Optional log of correlation candidates.
+
+\section{\texttt{logs/estimates.jsonl}}
+Optional log of region estimates.
+
+\section{Why Logging Matters}
+Logging matters because it makes the pipeline inspectable stage by stage. If an interviewer asks how you would debug wrong estimates, the correct answer is to inspect logs progressively: raw events, features, correlations, and final estimates.
+
+\chapter{Deployment and Hosting Discussion}
+\section{Local Deployment}
+The current project is best run locally for full functionality because live capture and TShark require host-level access.
+
+\section{Hosted Deployment}
+The frontend can be deployed on Vercel, but the backend is better suited to Render, Railway, or a VPS because it uses Express, WebSockets, SQLite, Python child processes, and optional TShark integration.
+
+\section{Why Vercel Alone Is Not Enough}
+Vercel excels at frontend and serverless scenarios, but this backend expects a long-running server process and local tooling. That mismatch should be explained clearly if asked about deployment decisions.
+
+\chapter{Strengths of the Project}
+The project has several strong engineering qualities. It is modular. It has a clean service boundary between Python and Node. It supports multiple input modes through a shared downstream pipeline. It includes persistence rather than using only in-memory state. It offers both terminal and browser output. It uses explicit algorithms rather than opaque black boxes. It handles asynchronous workflow through queued jobs and WebSocket updates. It has tests. It has documentation. It demonstrates iterative refinement, especially in the PCAP parser.
+
+\chapter{Weaknesses and Limitations}
+The project also has real limitations. PCAP and live inference remain heuristic-heavy. Evaluation metrics are strongest only for labeled data. The current frontend is implemented in one large page component and could be split into smaller modules. SQLite is sufficient for local use but not ideal for high-concurrency or distributed deployment. The current authentication model is adequate for a demo but not hardened for production. The legacy scripts suggest the repository contains exploratory artifacts that could be cleaned up further.
+
+\chapter{What Could Be Improved Next}
+\section{Algorithmic Improvements}
+Possible improvements include richer protocol modeling, better flow segmentation, support for windowed multi-burst matching, graph-based confidence visualization, and formal benchmarking against larger labeled datasets.
+
+\section{Backend Improvements}
+Possible backend improvements include token expiration, role-based access control, better upload validation, a persistent external queue, and migration from SQLite to PostgreSQL.
+
+\section{Frontend Improvements}
+The frontend could be refactored into smaller components, include richer charts, support filtering and sorting, and add export features for reports and CSV results.
+
+\section{DevOps Improvements}
+The project could gain CI pipelines, containerized integration tests, deployment profiles, and better environment separation for dev, demo, and hosted modes.
+
+\chapter{Interview Questions and Strong Answers}
+\section{What problem does this project solve?}
+It solves the problem of turning traffic metadata into structured, explainable correlation and region-estimation results across simulation, replay, PCAP, and live modes in a controlled cybersecurity research setting.
+
+\section{Why did you choose Python for the engine?}
+Because the engine is algorithm-heavy and benefits from concise data modeling, readable logic, and strong CLI ergonomics. Python was a practical choice for rapid iteration and clear academic explanation.
+
+\section{Why not keep everything in Node.js?}
+Separating the analysis engine into Python made the core scoring logic easier to experiment with and easier to validate independently from the web stack. The backend and frontend then consume it as a service boundary.
+
+\section{Why did you use WebSockets?}
+Because jobs are asynchronous. WebSockets let the frontend react to job state changes without polling aggressively.
+
+\section{Why SQLite?}
+It provides real persistence with minimal operational overhead. For a controlled academic tool, it is a good tradeoff.
+
+\section{What was the hardest part?}
+The hardest part was PCAP parsing. Real packet captures are noisy and do not naturally align with a simple three-hop abstract model. The parser had to be refined so it preserved enough meaningful burst structure for the downstream engine to produce non-empty ranked paths.
+
+\section{What is the biggest technical tradeoff in the project?}
+The biggest tradeoff is between realism and explainability. Highly realistic traffic-analysis systems are complex and uncertain. This project intentionally uses explicit heuristics and transparent formulas so it remains explainable and defensible.
+
+\section{What would you improve if given more time?}
+I would improve protocol-specific flow modeling, split the frontend into smaller components, harden authentication, move to PostgreSQL for hosted deployments, and build a richer benchmarking suite for capture data.
+
+\chapter{How to Explain the Project in Two Minutes}
+This project is a controlled full-stack traffic-correlation platform designed for cybersecurity research and academic demonstration. It accepts four input modes: simulation, replay, PCAP, and live capture. The Python engine converts those inputs into raw events, extracts features, scores adjacent hops using timing, size, and sequence similarity, builds ranked paths, and estimates probable origin regions. The Express backend manages authentication, persistence, uploads, queued jobs, and WebSocket updates. The Next.js frontend provides a dashboard for launching sessions and inspecting the results visually. The project is explainable, modular, and presentation-ready, while staying inside ethical research boundaries.
+
+\chapter{How to Explain the Project in Deep Technical Detail}
+At the data-model level, the system transforms observations through dataclasses: \texttt{RawEvent}, \texttt{FeatureEvent}, \texttt{CorrelationCandidate}, \texttt{RankedPath}, \texttt{RegionEstimate}, and \texttt{EvaluationSummary}. At the capture level, simulation and replay produce clean event streams, while PCAP and live modes use TShark to extract metadata and convert packets into burst-level structures. At the processing level, the engine computes temporal and size-based similarity under configurable thresholds, applies bonuses and penalties, filters weak candidates, and then joins compatible hop pairs through a graph-building stage. At the application level, the backend stores jobs and sessions in SQLite and invokes the Python engine as a child process. At the presentation level, the frontend receives updates over WebSockets and renders both structured tables and a terminal-like report.
+
+\chapter{Detailed Setup Notes}
+\section{Backend Environment}
+Create \texttt{backend/.env} from \texttt{backend/.env.example}. Typical values are:
+\begin{lstlisting}[style=codeblock]
+APP_DEFAULT_USER=admin
+APP_DEFAULT_PASS=admin123
+PORT=4000
+\end{lstlisting}
+
+\section{Frontend Environment}
+Create \texttt{frontend/.env.local} from \texttt{frontend/.env.example}. Typical values are:
+\begin{lstlisting}[style=codeblock]
+NEXT_PUBLIC_API_BASE=http://localhost:4000
+\end{lstlisting}
+
+\section{Install and Run}
+\begin{lstlisting}[style=codeblock]
+npm --prefix backend install
+npm --prefix frontend install
+python3 -m unittest discover -s tests -v
+npm --prefix backend run dev
+npm --prefix frontend run dev
+\end{lstlisting}
+
+\section{Hosted Caveat}
+The hosted version should favor simulation, replay, and possibly PCAP upload. Real live capture should remain local because hosted environments do not provide the same packet-capture privileges as a developer machine.
+
+\chapter{Suggested Viva and Resume Language}
+\section{Viva Summary}
+This project demonstrates a controlled traffic-analysis platform where metadata from simulated, replayed, offline packet captures, and live network observation is transformed into correlation candidates, ranked routing paths, and probabilistic source-region estimates. The platform is implemented as a modular Python engine with a Node backend and a React-based dashboard.
+
+\section{Resume Bullet 1}
+Developed a Python-based traffic-correlation engine with feature extraction, hop scoring, path ranking, probabilistic region estimation, and evaluation across simulated, replayed, PCAP, and live-capture inputs.
+
+\section{Resume Bullet 2}
+Built a full-stack dashboard using Express.js, SQLite, WebSockets, Next.js, and Tailwind CSS for authenticated session management, dataset uploads, queued analysis jobs, and real-time result visualization.
+
+\section{Resume Bullet 3}
+Integrated TShark-based packet metadata ingestion and refined PCAP burst clustering logic to convert real packet captures into structured analysis sessions suitable for academic traffic-analysis demonstrations.
+
+\chapter{Final Assessment}
+This project is sufficiently broad and technically rich to discuss in an interview or internship setting. It demonstrates system design, cross-language integration, algorithmic modeling, asynchronous orchestration, UI engineering, testing, and documentation. Its strengths should be presented confidently, and its limitations should be presented honestly. That combination usually leaves a stronger impression than overclaiming.
+
+\chapter*{Appendix A: Quick Command Reference}
+\addcontentsline{toc}{chapter}{Appendix A: Quick Command Reference}
+\begin{lstlisting}[style=codeblock]
+python3 main.py --mode simulate --sessions 16 --top-k 6
+python3 main.py --mode replay --dataset tests/sample_data/replay_dataset.jsonl
+python3 main.py --mode replay --dataset tests/sample_data/replay_dataset.csv
+python3 main.py --mode pcap --dataset tests/sample_data/better_capture2.pcap
+python3 main.py --mode live --interface any --capture-seconds 8
+python3 engine_api.py --mode simulate --sessions 18 --top-k 8
+python3 -m unittest discover -s tests -v
+npm --prefix backend run dev
+npm --prefix frontend run dev
+\end{lstlisting}
+
+\chapter*{Appendix B: File Inventory}
+\addcontentsline{toc}{chapter}{Appendix B: File Inventory}
+\begin{longtable}{p{5cm}p{8.5cm}}
+\toprule
+\textbf{File} & \textbf{Role in Repository} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{File} & \textbf{Role in Repository} \\
+\midrule
+\endhead
+\texttt{README.md} & Top-level project overview \\
+\texttt{main.py} & Terminal CLI entry point \\
+\texttt{engine\_api.py} & JSON bridge for backend integration \\
+\texttt{service.py} & Shared pipeline orchestrator \\
+\texttt{models.py} & Core dataclasses \\
+\texttt{config.py} & Central thresholds and weights \\
+\texttt{analyze.py} & Legacy exploratory analysis script \\
+\texttt{sniffer.py} & Legacy Scapy-based packet capture prototype \\
+\texttt{capture/simulate.py} & Synthetic session generator \\
+\texttt{capture/replay.py} & Replay loader \\
+\texttt{capture/pcap.py} & PCAP parsing and burst logic \\
+\texttt{capture/live.py} & Live capture wrapper \\
+\texttt{processing/features.py} & Feature extraction \\
+\texttt{processing/correlator.py} & Similarity scoring \\
+\texttt{processing/graph.py} & Ranked path construction \\
+\texttt{processing/estimator.py} & Region estimator \\
+\texttt{processing/evaluator.py} & Evaluation summary builder \\
+\texttt{ui/terminal.py} & Terminal report renderer \\
+\texttt{utils/io.py} & JSONL and CSV helpers \\
+\texttt{data/nodes.py} & Node registry and region metadata \\
+\texttt{backend/server.js} & Express server and routes \\
+\texttt{backend/auth.js} & Auth helper layer \\
+\texttt{backend/db.js} & SQLite initialization and data access \\
+\texttt{backend/queue.js} & Job queue logic \\
+\texttt{backend/pythonRunner.js} & Python process bridge \\
+\texttt{backend/socketHub.js} & WebSocket broadcast support \\
+\texttt{frontend/app/page.js} & Main dashboard page \\
+\texttt{frontend/app/layout.js} & Root layout \\
+\texttt{frontend/app/globals.css} & Global styling \\
+\texttt{tests/test\_pipeline.py} & Pipeline validation \\
+\texttt{tests/test\_pcap\_parser.py} & Parser validation \\
+\bottomrule
+\end{longtable}
+
+\chapter*{Appendix C: References and Knowledge Sources}
+\addcontentsline{toc}{chapter}{Appendix C: References and Knowledge Sources}
+\begin{thebibliography}{99}
+\bibitem{tor-design}
+R. Dingledine, N. Mathewson, and P. Syverson, ``Tor: The Second-Generation Onion Router,'' in \textit{Proceedings of the 13th USENIX Security Symposium}, 2004.
+
+\bibitem{murdoch}
+S. J. Murdoch and G. Danezis, ``Low-Cost Traffic Analysis of Tor,'' in \textit{IEEE Symposium on Security and Privacy}, 2005.
+
+\bibitem{wireshark}
+Wireshark Foundation, ``Wireshark and TShark Documentation.'' Available: \url{https://www.wireshark.org/docs/}
+
+\bibitem{express}
+OpenJS Foundation, ``Express.js Documentation.'' Available: \url{https://expressjs.com/}
+
+\bibitem{next}
+Vercel, ``Next.js Documentation.'' Available: \url{https://nextjs.org/docs}
+
+\bibitem{tailwind}
+Tailwind Labs, ``Tailwind CSS Documentation.'' Available: \url{https://tailwindcss.com/docs}
+\end{thebibliography}
+
+\end{document}
