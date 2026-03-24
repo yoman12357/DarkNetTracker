@@ -1,0 +1,10 @@
+{
+  "name": "traffic-correlation-platform",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "backend:dev": "npm --prefix backend run dev",
+    "frontend:dev": "npm --prefix frontend run dev",
+    "test:python": "python3 -m unittest discover -s tests -v"
+  }
+}

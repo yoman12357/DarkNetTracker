@@ -1,0 +1,708 @@
+\documentclass[12pt,a4paper]{report}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{setspace}
+\usepackage{titlesec}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{fancyhdr}
+\usepackage{caption}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    urlcolor=blue,
+    citecolor=blue,
+    pdftitle={Traffic Correlation-Based Location Estimation in Anonymous Networks},
+    pdfauthor={Student Project Report}
+}
+
+\onehalfspacing
+\setlength{\parskip}{0.5em}
+\setlength{\parindent}{0pt}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{Traffic Correlation-Based Location Estimation}
+\fancyhead[R]{Project Report}
+\fancyfoot[C]{\thepage}
+
+\titleformat{\chapter}[display]
+  {\normalfont\bfseries\Large}
+  {\chaptertitlename\ \thechapter}{12pt}{\Huge}
+
+\lstdefinestyle{codeblock}{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    backgroundcolor=\color{gray!8},
+    columns=fullflexible
+}
+
+\begin{document}
+
+\begin{titlepage}
+    \centering
+    \vspace*{1.5cm}
+    {\Large \textbf{Project Report}}\\[1.2cm]
+    {\Huge \textbf{Traffic Correlation-Based Location Estimation in Anonymous Networks}}\\[1.2cm]
+    {\Large Terminal-First and Full-Stack Cybersecurity Research Platform}\\[1.8cm]
+
+    \begin{tabular}{>{\bfseries}p{5cm}p{8cm}}
+        Project Domain: & Cybersecurity / Network Traffic Analysis \\
+        Project Type: & Research Prototype and Full-Stack Demonstration System \\
+        Frontend Stack: & Next.js, Tailwind CSS \\
+        Backend Stack: & Express.js, WebSockets, SQLite \\
+        Analysis Engine: & Python 3 \\
+    \end{tabular}
+
+    \vfill
+
+    \begin{tabular}{>{\bfseries}p{5cm}p{8cm}}
+        Submitted By: & \underline{\hspace{7cm}} \\
+        Roll Number: & \underline{\hspace{7cm}} \\
+        Department: & \underline{\hspace{7cm}} \\
+        Institution: & \underline{\hspace{7cm}} \\
+        Guided By: & \underline{\hspace{7cm}} \\
+        Academic Year: & \underline{\hspace{7cm}} \\
+    \end{tabular}
+
+    \vfill
+    {\large \today}
+\end{titlepage}
+
+\pagenumbering{roman}
+
+\chapter*{Title Page Note}
+This document presents the design, implementation, evaluation, and usage of a cybersecurity research platform titled \textit{Traffic Correlation-Based Location Estimation in Anonymous Networks}. The report has been prepared in a form suitable for academic evaluation, project submission, and viva presentation. The implementation described in this report is aligned with a controlled and ethical research setting. It does not decrypt traffic, does not claim exact identification of real users, and does not represent unauthorized surveillance of anonymous networks. Instead, it demonstrates how metadata analysis, timing correlation, packet-size similarity, flow grouping, and path reconstruction can be used to estimate probable origin regions under simulated, replay, PCAP, and live-capture conditions.
+
+\chapter*{Certificate}
+This is to certify that the report entitled \textit{Traffic Correlation-Based Location Estimation in Anonymous Networks} is a bona fide record of the work carried out as part of a project in the domain of cybersecurity research and network traffic analysis. The work includes problem formulation, controlled-environment implementation, terminal-first analytics, a web-based dashboard, replay and PCAP processing, live traffic capture support, probabilistic correlation logic, and evaluation.
+
+\vspace{2cm}
+\begin{tabularx}{\textwidth}{X X}
+    \textbf{Project Guide Signature} & \textbf{Head of Department Signature} \\
+    \\[2cm]
+    \hrulefill & \hrulefill
+\end{tabularx}
+
+\chapter*{Declaration}
+I hereby declare that this report and the corresponding implementation are original work carried out for academic and research purposes. The references to published papers, documentation, and standard tools have been appropriately acknowledged. Any resemblance to practical operational surveillance systems should not be inferred; the system is designed and evaluated as a controlled cybersecurity analysis platform in accordance with ethical and defensive-security principles.
+
+\chapter*{Acknowledgement}
+I would like to express sincere gratitude to my faculty members, project guide, and department for providing the opportunity to work on this project. The project demanded an interdisciplinary understanding of cybersecurity, networking, software engineering, and system design. I would also like to acknowledge the developers and maintainers of open-source tools such as Wireshark/TShark, Python, Node.js, Next.js, and Express.js, which made rapid experimentation and controlled research implementation possible.
+
+\tableofcontents
+\listoftables
+\listoffigures
+
+\clearpage
+\pagenumbering{arabic}
+
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+Anonymous communication systems are designed to conceal the origin of user traffic through layered routing and relay-based forwarding. While encryption protects the content of communication, metadata such as packet timing, packet length, protocol behavior, and burst structure can still reveal useful signals for defensive traffic analysis. This project presents a controlled cybersecurity platform that estimates probable origin regions from anonymized or anonymization-style network traffic using traffic correlation techniques. The system does not attempt to decrypt payloads or identify real users; instead, it evaluates probabilistic relationships between entry-side, middle-hop, and exit-side traffic features under simulation, replay, PCAP, and live-capture workflows.
+
+The implementation is divided into three major layers. The first layer is a Python analysis engine responsible for feature extraction, hop-level similarity scoring, path construction, and probabilistic region estimation. The second layer is an Express.js backend that exposes REST APIs, upload endpoints, authentication, SQLite-backed persistence, and WebSocket-based session updates. The third layer is a Next.js and Tailwind CSS dashboard that allows the user to run simulations, upload replay files, process PCAP traces, and inspect ranked correlated paths and estimated regions. The system supports deterministic replay datasets as well as real packet metadata ingestion using TShark.
+
+The report explains the motivation for the project, the architecture, mathematical formulation, implementation details, testing strategy, ethical boundaries, results, limitations, and future scope. It further demonstrates that a terminal-first core can be progressively expanded into a full-stack academic project while preserving the explainability of the analysis pipeline. The final outcome is a defensible and presentation-ready research platform that showcases how correlation-based inference can be explored in a controlled environment.
+
+\chapter{Introduction}
+\section{Background}
+Anonymous networking systems such as Tor are designed to provide communication privacy by separating the user's original identity from the final communication endpoint. These systems typically route traffic through multiple intermediate nodes, reducing the ability of any single observer to directly connect a sender with a receiver. However, privacy systems do not entirely eliminate metadata. Packet timing, packet sizes, sequence behavior, burst intervals, and routing structure may still carry signals that can be measured and correlated. This creates an important research problem in the field of cybersecurity: how to estimate traffic origin probabilistically using metadata while respecting ethical and technical limitations.
+
+\section{Problem Statement}
+The central problem addressed by this project is the following: given observed network traffic that has passed through an anonymous-routing-style system, can a controlled research platform estimate a probable source region using only traffic metadata and correlation methods? The project does not attempt exact identification, payload inspection, or decryption. Instead, it studies whether entry-side and downstream flow patterns can be matched through a scoring framework that measures timing similarity, packet-size similarity, and sequence continuity.
+
+\section{Project Objective}
+The objective of the project is to build an end-to-end analysis platform that:
+\begin{itemize}[leftmargin=1.5em]
+    \item processes simulated, replayed, PCAP, and live-capture traffic metadata,
+    \item extracts structured packet and flow features,
+    \item correlates candidate hop transitions using transparent formulas,
+    \item constructs likely routing paths,
+    \item estimates probable origin regions with confidence scores,
+    \item presents results in both terminal and browser-based interfaces.
+\end{itemize}
+
+\section{Report Organization}
+This report begins with motivation and literature grounding, then explains the functional requirements and architecture derived from the PRD. It proceeds to discuss the implementation of the analysis engine, backend, and frontend. Later chapters describe testing, usage instructions, observed results, limitations, ethics, and future scope. The final chapter provides a concise conclusion and IEEE-style references.
+
+\chapter{Motivation and Need for the Study}
+\section{Motivation}
+The motivation for this project is rooted in the intersection of cybersecurity research and privacy-preserving network systems. Modern anonymous-routing systems are highly effective at protecting communication content, but cybersecurity analysts, researchers, and academic evaluators are still interested in how metadata may be studied under controlled conditions. This is especially relevant in areas such as threat intelligence, botnet behavior analysis, suspicious routing-pattern monitoring, and laboratory study of traffic-analysis resilience.
+
+\section{Academic Motivation}
+From an academic perspective, the project is valuable because it combines:
+\begin{itemize}[leftmargin=1.5em]
+    \item network traffic fundamentals,
+    \item statistical correlation methods,
+    \item packet-capture tooling,
+    \item backend system design,
+    \item frontend dashboard development,
+    \item ethical framing in cybersecurity research.
+\end{itemize}
+This makes it suitable as a final-year project or research-driven demonstration platform.
+
+\section{Practical Motivation}
+In practical terms, the project demonstrates how traffic metadata can be structured and analyzed without violating the scope of ethical defensive-security work. It provides a platform that can be shown to a teacher, evaluator, or project review panel not just as an idea, but as a working system with simulation, replay, PCAP upload, and live capture support.
+
+\section{Why a Full-Stack Implementation Was Important}
+Initially, a terminal-only implementation was sufficient for algorithm validation. However, to make the system presentation-ready and more useful for interactive inspection, a web-based layer became necessary. The full-stack version allows non-technical evaluators to observe session creation, path ranking, region confidence, and report outputs visually, which increases the clarity and educational value of the project.
+
+\chapter{Product Requirements and Scope}
+\section{PRD Alignment}
+The implemented system follows the PRD idea of a layered pipeline:
+\[
+\text{Packet Source} \rightarrow \text{Feature Extraction} \rightarrow \text{Correlation Engine} \rightarrow \text{Location Estimation} \rightarrow \text{Visualization}
+\]
+The final implementation supports four traffic input modes:
+\begin{itemize}[leftmargin=1.5em]
+    \item \textbf{Simulation mode}: deterministic synthetic Tor-like routing data,
+    \item \textbf{Replay mode}: JSONL and CSV event datasets,
+    \item \textbf{PCAP mode}: packet capture files parsed using TShark,
+    \item \textbf{Live mode}: timed packet capture from a selected interface.
+\end{itemize}
+
+\section{In-Scope Features}
+\begin{itemize}[leftmargin=1.5em]
+    \item traffic metadata analysis,
+    \item correlation-based routing-path inference,
+    \item probabilistic origin-region estimation,
+    \item terminal and browser-based output,
+    \item persistent session storage,
+    \item protected backend access,
+    \item analysis of replay files and PCAPs,
+    \item live capture support using host tools.
+\end{itemize}
+
+\section{Out-of-Scope Features}
+\begin{itemize}[leftmargin=1.5em]
+    \item packet payload decryption,
+    \item direct user identification,
+    \item real-world deanonymization claims,
+    \item unauthorized surveillance,
+    \item exploitation of anonymity networks.
+\end{itemize}
+
+\chapter{Literature Review}
+\section{Traffic Analysis in Anonymous Networks}
+Traffic analysis has long been studied as a side-channel problem in anonymous communication systems. Even when content is encrypted, timing and volume patterns can leak information. Research has shown that low-latency networks are particularly susceptible to timing-based attacks if a sufficiently capable observer is able to compare ingress and egress flow properties. However, practical accuracy depends on network conditions, congestion, path churn, and measurement noise.
+
+\section{Correlation Methods}
+Classic traffic-correlation methods compare streams by:
+\begin{itemize}[leftmargin=1.5em]
+    \item packet inter-arrival times,
+    \item packet lengths or burst volumes,
+    \item ordered sequence relationships,
+    \item timing-window overlap,
+    \item statistical distance measures between flows.
+\end{itemize}
+This project adopts a transparent weighted-similarity approach because it is explainable, reproducible, and suitable for an academic demo.
+
+\section{Operational Limitation in Literature}
+Published research repeatedly highlights the gap between controlled experiments and real-world deployment. In real networks, packet reordering, buffering, NAT behavior, multiplexing, protocol diversity, and measurement asymmetry make exact attribution extremely difficult. This report therefore uses the literature not to overstate capability, but to justify why probabilistic estimation and controlled experimentation are the appropriate project targets.
+
+\chapter{System Architecture}
+\section{High-Level Architecture}
+The project is implemented in three major layers:
+\begin{enumerate}[leftmargin=1.5em]
+    \item \textbf{Python analysis engine}
+    \item \textbf{Express backend services}
+    \item \textbf{Next.js frontend dashboard}
+\end{enumerate}
+
+\section{Python Analysis Engine}
+The analysis engine includes the following modules:
+\begin{itemize}[leftmargin=1.5em]
+    \item \texttt{capture/simulate.py}
+    \item \texttt{capture/replay.py}
+    \item \texttt{capture/pcap.py}
+    \item \texttt{capture/live.py}
+    \item \texttt{processing/features.py}
+    \item \texttt{processing/correlator.py}
+    \item \texttt{processing/graph.py}
+    \item \texttt{processing/estimator.py}
+    \item \texttt{processing/evaluator.py}
+\end{itemize}
+
+\section{Backend Layer}
+The backend is implemented in Node.js using Express.js. It includes:
+\begin{itemize}[leftmargin=1.5em]
+    \item login endpoint,
+    \item session creation endpoints,
+    \item replay and PCAP upload endpoints,
+    \item live-capture initiation endpoint,
+    \item SQLite-backed persistent storage,
+    \item background job queue,
+    \item WebSocket updates for session state.
+\end{itemize}
+
+\section{Frontend Layer}
+The frontend is implemented using Next.js and Tailwind CSS. It includes:
+\begin{itemize}[leftmargin=1.5em]
+    \item login page,
+    \item simulation panel,
+    \item replay/PCAP upload panel,
+    \item live-capture controls,
+    \item session list,
+    \item ranked path tables,
+    \item confidence chart and score plot,
+    \item terminal report panel.
+\end{itemize}
+
+\chapter{Mathematical Model and Core Algorithms}
+\section{Feature Representation}
+Each event in the analysis engine is represented with the following key fields:
+\begin{itemize}[leftmargin=1.5em]
+    \item timestamp,
+    \item packet size,
+    \item source and destination IP,
+    \item node type,
+    \item session identifier,
+    \item sequence number,
+    \item protocol,
+    \item port metadata,
+    \item flow identifier.
+\end{itemize}
+
+\section{Time Similarity}
+The time similarity function is defined as:
+\[
+\text{time\_similarity} = \frac{1}{1 + \frac{\Delta t}{T}}
+\]
+where $\Delta t$ is the time difference between two candidate events and $T$ is the configured time threshold.
+
+\section{Size Similarity}
+The packet-size similarity is defined as:
+\[
+\text{size\_similarity} = \frac{1}{1 + \frac{\Delta s}{S}}
+\]
+where $\Delta s$ is the absolute packet-size difference and $S$ is the configured size threshold.
+
+\section{Sequence Similarity}
+The sequence relationship is modeled as:
+\[
+\text{sequence\_similarity} = \frac{1}{1 + \text{sequence\_gap}}
+\]
+This ensures that adjacent sequence relationships contribute higher scores than distant ones.
+
+\section{Final Correlation Score}
+The final score combines weighted similarities:
+\[
+\text{score} = w_1 \cdot \text{time\_similarity} + w_2 \cdot \text{size\_similarity} + w_3 \cdot \text{sequence\_similarity}
+\]
+In implementation, the score is further adjusted by:
+\begin{itemize}[leftmargin=1.5em]
+    \item session consistency bonus,
+    \item label consistency bonus,
+    \item capture-specific protocol bonus.
+\end{itemize}
+
+\section{Path Construction}
+Candidate paths are built from:
+\begin{itemize}[leftmargin=1.5em]
+    \item \texttt{ENTRY} $\rightarrow$ \texttt{MIDDLE}
+    \item \texttt{MIDDLE} $\rightarrow$ \texttt{EXIT}
+\end{itemize}
+When complete three-hop evidence is unavailable, the graph stage may preserve partial paths to avoid discarding useful origin-side signals from sparse captures.
+
+\section{Region Estimation}
+The final region estimate is obtained by aggregating support from all ranked paths associated with candidate entry regions:
+\[
+\text{confidence}(r) = \frac{\text{support}(r) \cdot \text{prior}(r)}{\sum_{k} \text{support}(k) \cdot \text{prior}(k)}
+\]
+This produces a normalized probability-like ranking over candidate regions.
+
+\chapter{Implementation Details}
+\section{Simulation Mode}
+Simulation mode generates synthetic Tor-like sessions with entry, middle, and exit nodes. Suspicious sessions are injected deterministically at a fixed rate to make controlled testing possible. This provides reproducibility, which is useful for debugging and demonstration.
+
+\section{Replay Mode}
+Replay mode reads structured datasets from JSONL and CSV files. These datasets were created to verify that the analysis engine produces stable outputs and that the frontend/backend integration preserves consistency across repeated runs.
+
+\section{PCAP Mode}
+PCAP mode uses TShark to read packet capture files and export selected metadata fields. The parser extracts protocol, addresses, ports, timestamps, and frame lengths. The implementation then:
+\begin{enumerate}[leftmargin=1.5em]
+    \item groups packets into flow keys,
+    \item segments them using idle gaps,
+    \item collapses them into burst-level structures,
+    \item converts one rich cluster into multiple candidate sessions,
+    \item maps those sessions into entry/middle/exit evidence for downstream correlation.
+\end{enumerate}
+This part was refined during development because real PCAP files initially produced over-compressed outputs.
+
+\section{Live Mode}
+Live mode captures packet metadata for a user-specified duration using TShark. The output is then processed through the same burst and clustering logic as PCAP mode. Live mode is useful for demonstration because traffic can be generated during the capture window, for example using \texttt{ping}, \texttt{curl}, or DNS queries.
+
+\section{Persistent Backend}
+The backend uses SQLite for persistence. It stores:
+\begin{itemize}[leftmargin=1.5em]
+    \item users,
+    \item auth tokens,
+    \item sessions,
+    \item jobs.
+\end{itemize}
+This ensures that session history remains available even after multiple requests and page refreshes.
+
+\section{Authentication}
+A token-based authentication mechanism protects the API. A default administrative account is seeded for local demo use. The frontend performs login and then sends the issued token automatically with authenticated requests.
+
+\section{Queue and Job Lifecycle}
+Each analysis request becomes a queued job. The job runner marks jobs as queued, running, completed, or failed. This is especially useful for live capture mode where analysis is not instantaneous.
+
+\chapter{Frontend Design and Visualization}
+\section{Design Goals}
+The frontend was designed with the following goals:
+\begin{itemize}[leftmargin=1.5em]
+    \item simplicity for academic presentation,
+    \item visual clarity,
+    \item immediate visibility of session status,
+    \item readable metrics and ranked paths,
+    \item compatibility with both desktop and browser-based demos.
+\end{itemize}
+
+\section{Dashboard Components}
+The dashboard includes:
+\begin{itemize}[leftmargin=1.5em]
+    \item command center panel,
+    \item session cards,
+    \item metric summary cards,
+    \item estimated region table,
+    \item evaluation snapshot,
+    \item confidence distribution chart,
+    \item path score curve,
+    \item ranked path table,
+    \item hop-correlation table,
+    \item terminal report panel.
+\end{itemize}
+
+\section{Why Both Terminal and Web Output Are Kept}
+The terminal output remains important because it is compact, reproducible, and useful for debugging. The browser dashboard, however, improves accessibility and presentation quality. Together, they make the system suitable for both engineering validation and faculty demonstration.
+
+\chapter{How the Project Was Built}
+\section{Development Strategy}
+The project was built in stages:
+\begin{enumerate}[leftmargin=1.5em]
+    \item terminal-first prototype,
+    \item modular Python analysis engine,
+    \item structured replay support,
+    \item full-stack integration,
+    \item persistent backend,
+    \item upload and live capture support,
+    \item iterative refinement of PCAP processing.
+\end{enumerate}
+
+\section{Key Engineering Decisions}
+\begin{itemize}[leftmargin=1.5em]
+    \item Explainability was prioritized over opaque machine learning.
+    \item A weighted scoring system was chosen because it is easier to justify in a viva.
+    \item SQLite was selected for simplicity and portability.
+    \item TShark was used instead of writing a raw packet parser from scratch.
+    \item The frontend was built using Next.js App Router for a modern single-project dashboard architecture.
+\end{itemize}
+
+\section{Challenges Faced}
+\begin{itemize}[leftmargin=1.5em]
+    \item maintaining consistency between simulation, replay, PCAP, and live modes,
+    \item avoiding over-correlation across unrelated sessions,
+    \item interpreting sparse real captures,
+    \item preventing stale frontend build issues,
+    \item preserving ethical scope while discussing anonymous-network traffic analysis.
+\end{itemize}
+
+\chapter{How to Run the Project}
+\section{Prerequisites}
+The following tools are required:
+\begin{itemize}[leftmargin=1.5em]
+    \item Python 3,
+    \item Node.js and npm,
+    \item TShark for PCAP and live capture support,
+    \item a modern browser.
+\end{itemize}
+
+\section{Environment Files}
+Create backend configuration:
+\begin{lstlisting}[style=codeblock]
+cp backend/.env.example backend/.env
+\end{lstlisting}
+
+Create frontend configuration:
+\begin{lstlisting}[style=codeblock]
+cp frontend/.env.example frontend/.env.local
+\end{lstlisting}
+
+\section{Install Dependencies}
+\begin{lstlisting}[style=codeblock]
+npm --prefix backend install
+npm --prefix frontend install
+\end{lstlisting}
+
+\section{Run Backend}
+\begin{lstlisting}[style=codeblock]
+npm --prefix backend run dev
+\end{lstlisting}
+
+\section{Run Frontend}
+\begin{lstlisting}[style=codeblock]
+npm --prefix frontend run dev
+\end{lstlisting}
+
+\section{Open Dashboard}
+Open:
+\begin{lstlisting}[style=codeblock]
+http://localhost:3000
+\end{lstlisting}
+
+\section{Default Login}
+Default credentials for demo use:
+\begin{lstlisting}[style=codeblock]
+username: admin
+password: admin123
+\end{lstlisting}
+
+\section{CLI Test Commands}
+\subsection*{Simulation}
+\begin{lstlisting}[style=codeblock]
+python3 main.py --mode simulate --sessions 16 --top-k 6
+\end{lstlisting}
+
+\subsection*{Replay}
+\begin{lstlisting}[style=codeblock]
+python3 main.py --mode replay --dataset tests/sample_data/replay_dataset.jsonl
+python3 main.py --mode replay --dataset tests/sample_data/replay_dataset.csv
+\end{lstlisting}
+
+\subsection*{PCAP}
+\begin{lstlisting}[style=codeblock]
+python3 main.py --mode pcap --dataset tests/sample_data/better_capture2.pcap
+\end{lstlisting}
+
+\subsection*{Live}
+\begin{lstlisting}[style=codeblock]
+python3 main.py --mode live --interface any --capture-seconds 8
+\end{lstlisting}
+
+\section{Testing Commands}
+\begin{lstlisting}[style=codeblock]
+python3 -m unittest discover -s tests -v
+\end{lstlisting}
+
+\chapter{Experimental Results}
+\section{Simulation Results}
+Simulation mode consistently produces meaningful correlations and stable region estimates because the dataset is deterministic and controlled. This mode is the strongest for demonstrating the mathematical correctness of the pipeline.
+
+\section{Replay Results}
+Replay mode verifies that file-based workflows behave consistently and produce reproducible outputs. JSONL and CSV versions of the same dataset were used to confirm parser consistency.
+
+\section{PCAP Results}
+PCAP mode was the most challenging part of the project. Early versions over-compressed captures and produced too few events. After parser refinement, real captures such as \texttt{better\_capture2.pcap} began producing:
+\begin{itemize}[leftmargin=1.5em]
+    \item non-zero raw event counts,
+    \item hop correlations,
+    \item ranked complete paths,
+    \item non-empty region estimates.
+\end{itemize}
+This makes PCAP analysis suitable for demonstration, although its interpretive quality remains more variable than replay or simulation.
+
+\section{Live Results}
+Live mode works best when the user deliberately generates traffic during the capture window. Longer capture windows without traffic may lead to sparse outputs. For reliable demos, short live captures accompanied by \texttt{ping} and \texttt{curl} activity are recommended.
+
+\section{Observed Strengths}
+\begin{itemize}[leftmargin=1.5em]
+    \item modular and explainable pipeline,
+    \item full-stack interface,
+    \item support for multiple analysis modes,
+    \item usable session persistence,
+    \item real integration with TShark.
+\end{itemize}
+
+\section{Observed Weaknesses}
+\begin{itemize}[leftmargin=1.5em]
+    \item PCAP/live outputs remain sensitive to traffic sparsity,
+    \item evaluation metrics are more reliable on labeled datasets,
+    \item probabilistic estimates should not be over-interpreted as ground truth.
+\end{itemize}
+
+\chapter{Testing and Validation}
+\section{Unit and Integration Testing}
+Automated tests were written for:
+\begin{itemize}[leftmargin=1.5em]
+    \item simulation pipeline,
+    \item replay pipeline,
+    \item CSV and JSONL consistency,
+    \item PCAP parser clustering behavior.
+\end{itemize}
+
+\section{Manual Validation}
+Manual validation included:
+\begin{itemize}[leftmargin=1.5em]
+    \item CLI runs,
+    \item backend endpoint verification,
+    \item login and session creation checks,
+    \item upload testing in the browser,
+    \item live capture demonstrations,
+    \item repeated refinement of real PCAP files.
+\end{itemize}
+
+\section{Validation Philosophy}
+The validation strategy used in this project emphasizes:
+\begin{itemize}[leftmargin=1.5em]
+    \item reproducibility on synthetic and replay data,
+    \item functionality on PCAP and live inputs,
+    \item conservative interpretation of outputs,
+    \item alignment with defensive-security research.
+\end{itemize}
+
+\chapter{Ethics, Security, and Limitations}
+\section{Ethical Boundary}
+This system is intended for controlled cybersecurity analysis, teaching, and laboratory demonstrations. It is not a tool for payload decryption, direct identity exposure, or real-world deanonymization.
+
+\section{Security Considerations}
+The backend uses authentication, local persistence, and server-side job handling. Uploaded files are processed locally. However, production hardening such as role-based access control, token expiration, secure secret management, and hardened deployment has not been the primary focus of this academic implementation.
+
+\section{Limitations}
+\begin{itemize}[leftmargin=1.5em]
+    \item estimates are probabilistic, not definitive,
+    \item real-world traffic remains noisy and incomplete,
+    \item PCAP and live outputs depend strongly on capture quality,
+    \item current evaluation metrics are strongest on labeled replay/simulation data,
+    \item region inference should be interpreted as indicative rather than exact.
+\end{itemize}
+
+\chapter{Future Scope}
+\section{Short-Term Improvements}
+\begin{itemize}[leftmargin=1.5em]
+    \item richer PCAP feature extraction,
+    \item protocol-specific flow modeling,
+    \item improved scoring for DNS and mixed-flow captures,
+    \item exportable PDF/CSV reports from the dashboard,
+    \item more detailed graph visualization.
+\end{itemize}
+
+\section{Medium-Term Improvements}
+\begin{itemize}[leftmargin=1.5em]
+    \item multi-user support,
+    \item token expiration and user management,
+    \item background worker scaling,
+    \item Postgres-based persistence,
+    \item authenticated report downloads.
+\end{itemize}
+
+\section{Long-Term Research Scope}
+\begin{itemize}[leftmargin=1.5em]
+    \item machine-learning-based correlation scoring,
+    \item formal benchmarking on larger labeled datasets,
+    \item uncertainty visualization,
+    \item adversarial robustness studies,
+    \item distributed-monitoring simulation in laboratory environments.
+\end{itemize}
+
+\chapter{Conclusion}
+This project demonstrates that a traffic-correlation idea from a PRD can be transformed into a full working system with both analytical rigor and practical presentation value. The final platform includes simulation, replay, PCAP upload, and live capture analysis; an explainable scoring pipeline; a persistent backend; and a browser dashboard suitable for faculty demonstration. The results confirm that metadata-based correlation can support probabilistic origin estimation in controlled environments, while also highlighting the practical limitations of extending such methods to real-world anonymous-network traffic. The project therefore succeeds as a cybersecurity research platform, an educational full-stack system, and a technically defensible academic submission.
+
+\chapter*{Appendix A: Important Files}
+\addcontentsline{toc}{chapter}{Appendix A: Important Files}
+\begin{longtable}{p{5cm}p{9cm}}
+\toprule
+\textbf{File} & \textbf{Purpose} \\
+\midrule
+\endfirsthead
+\toprule
+\textbf{File} & \textbf{Purpose} \\
+\midrule
+\endhead
+\texttt{main.py} & CLI entry point \\
+\texttt{service.py} & Shared analysis pipeline service \\
+\texttt{engine\_api.py} & JSON-producing engine wrapper \\
+\texttt{capture/simulate.py} & Synthetic traffic generation \\
+\texttt{capture/replay.py} & JSONL/CSV replay ingestion \\
+\texttt{capture/pcap.py} & PCAP parsing and burst/session construction \\
+\texttt{capture/live.py} & Live packet metadata capture \\
+\texttt{processing/correlator.py} & Hop similarity scoring \\
+\texttt{processing/graph.py} & Path construction \\
+\texttt{processing/estimator.py} & Region estimation \\
+\texttt{backend/server.js} & Backend API server \\
+\texttt{backend/db.js} & SQLite persistence layer \\
+\texttt{backend/queue.js} & Job queue logic \\
+\texttt{frontend/app/page.js} & Web dashboard UI \\
+\bottomrule
+\end{longtable}
+
+\chapter*{Appendix B: Sample API Requests}
+\addcontentsline{toc}{chapter}{Appendix B: Sample API Requests}
+\begin{lstlisting}[style=codeblock]
+curl http://127.0.0.1:4000/api/health
+\end{lstlisting}
+
+\begin{lstlisting}[style=codeblock]
+curl -X POST http://127.0.0.1:4000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}'
+\end{lstlisting}
+
+\begin{lstlisting}[style=codeblock]
+curl -X POST http://127.0.0.1:4000/api/sessions/simulate \
+  -H "Authorization: Bearer <TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{"sessions":8,"seed":7,"topK":4}'
+\end{lstlisting}
+
+\chapter*{References}
+\addcontentsline{toc}{chapter}{References}
+\begin{thebibliography}{99}
+
+\bibitem{tor-design}
+R. Dingledine, N. Mathewson, and P. Syverson, ``Tor: The Second-Generation Onion Router,'' in \textit{Proceedings of the 13th USENIX Security Symposium}, San Diego, CA, USA, 2004, pp. 303--320.
+
+\bibitem{murdoch2005}
+S. J. Murdoch and G. Danezis, ``Low-Cost Traffic Analysis of Tor,'' in \textit{Proceedings of the 2005 IEEE Symposium on Security and Privacy}, Oakland, CA, USA, 2005, pp. 183--195.
+
+\bibitem{traffic-confirmation}
+K. Bauer, D. McCoy, D. Grunwald, T. Kohno, and D. Sicker, ``Low-Resource Routing Attacks Against Tor,'' in \textit{Proceedings of the 2007 ACM Workshop on Privacy in Electronic Society}, Alexandria, VA, USA, 2007, pp. 11--20.
+
+\bibitem{website-fingerprinting}
+A. Panchenko, L. Niessen, A. Zinnen, and T. Engel, ``Website Fingerprinting in Onion Routing Based Anonymization Networks,'' in \textit{Proceedings of the 10th ACM Workshop on Privacy in the Electronic Society}, Chicago, IL, USA, 2011, pp. 103--114.
+
+\bibitem{tor-metadata}
+M. Perry, E. Clark, and S. Murdoch, ``The Design and Implementation of the Tor Browser,'' \textit{Open Source Report}, The Tor Project, 2013.
+
+\bibitem{wf-review}
+T. Wang and I. Goldberg, ``On Realistically Attacking Tor with Website Fingerprinting,'' \textit{Proceedings on Privacy Enhancing Technologies}, vol. 2016, no. 4, pp. 21--36, 2016.
+
+\bibitem{network-security-text}
+W. Stallings, \textit{Network Security Essentials: Applications and Standards}, 6th ed. Boston, MA, USA: Pearson, 2017.
+
+\bibitem{tor-metrics}
+The Tor Project, ``Tor Metrics Portal,'' [Online]. Available: \url{https://metrics.torproject.org/}. Accessed: 24-Mar-2026.
+
+\bibitem{wireshark}
+Wireshark Foundation, ``Wireshark and TShark Documentation,'' [Online]. Available: \url{https://www.wireshark.org/docs/}. Accessed: 24-Mar-2026.
+
+\bibitem{scapy}
+P. Biondi, ``Scapy,'' [Online]. Available: \url{https://scapy.net/}. Accessed: 24-Mar-2026.
+
+\bibitem{express}
+OpenJS Foundation, ``Express.js Documentation,'' [Online]. Available: \url{https://expressjs.com/}. Accessed: 24-Mar-2026.
+
+\bibitem{nextjs}
+Vercel, ``Next.js Documentation,'' [Online]. Available: \url{https://nextjs.org/docs}. Accessed: 24-Mar-2026.
+
+\bibitem{tailwind}
+Tailwind Labs, ``Tailwind CSS Documentation,'' [Online]. Available: \url{https://tailwindcss.com/docs}. Accessed: 24-Mar-2026.
+
+\end{thebibliography}
+
+\end{document}

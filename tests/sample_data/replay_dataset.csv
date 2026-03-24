@@ -1,0 +1,13 @@
+timestamp,packet_size,direction,session_id,node_id,node_type,src_ip,dst_ip,sequence_no,region_hint,label
+1711000000.10,734,outbound,R001,entry-de-1,ENTRY,10.1.0.1,185.220.101.1,1,DE,suspicious
+1711000000.17,726,outbound,R001,middle-fr-1,MIDDLE,10.1.0.2,51.68.204.14,2,FR,suspicious
+1711000000.24,731,outbound,R001,exit-us-1,EXIT,10.1.0.3,104.244.72.115,3,US,suspicious
+1711000001.10,711,outbound,R002,entry-de-1,ENTRY,10.1.1.1,185.220.101.1,1,DE,suspicious
+1711000001.15,704,outbound,R002,middle-de-1,MIDDLE,10.1.1.2,185.220.102.7,2,DE,suspicious
+1711000001.22,706,outbound,R002,exit-de-1,EXIT,10.1.1.3,185.220.103.8,3,DE,suspicious
+1711000002.30,536,outbound,R003,entry-fr-1,ENTRY,10.2.0.1,51.158.99.10,1,FR,normal
+1711000002.48,520,outbound,R003,middle-nl-1,MIDDLE,10.2.0.2,45.66.35.20,2,NL,normal
+1711000002.72,512,outbound,R003,exit-sg-1,EXIT,10.2.0.3,139.162.15.55,3,SG,normal
+1711000003.25,498,outbound,R004,entry-nl-1,ENTRY,10.2.1.1,178.17.58.159,1,NL,normal
+1711000003.54,487,outbound,R004,middle-us-1,MIDDLE,10.2.1.2,23.129.64.211,2,US,normal
+1711000003.81,482,outbound,R004,exit-fr-1,EXIT,10.2.1.3,163.172.43.201,3,FR,normal
