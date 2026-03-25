@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   backend:
     build:
@@ -10,6 +8,16 @@ services:
     environment:
       APP_DEFAULT_USER: admin
       APP_DEFAULT_PASS: admin123
+      APP_ANALYST_USER: analyst
+      APP_ANALYST_PASS: analyst123
+      APP_VIEWER_USER: viewer
+      APP_VIEWER_PASS: viewer123
+      PORT: 4000
+      HOST: 0.0.0.0
+      AUTH_TOKEN_TTL_HOURS: 8
+    volumes:
+      - ./backend/data:/workspace/backend/data
+      - ./backend/uploads:/workspace/backend/uploads
 
   frontend:
     build:
@@ -21,3 +29,5 @@ services:
       NEXT_PUBLIC_API_BASE: http://localhost:4000
     depends_on:
       - backend
+
+volumes: {}

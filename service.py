@@ -18,6 +18,25 @@ from ui.terminal import render_report
 from utils.io import write_jsonl
 
 
+def _build_protocol_summary(raw_events: list[Any]) -> list[dict[str, Any]]:
+    counts: dict[str, int] = {}
+    for event in raw_events:
+        protocol = getattr(event, "protocol", "") or "UNKNOWN"
+        counts[protocol] = counts.get(protocol, 0) + 1
+
+    total = sum(counts.values()) or 1
+    summary = [
+        {
+            "protocol": protocol,
+            "count": count,
+            "share": round((count / total) * 100, 2),
+        }
+        for protocol, count in counts.items()
+    ]
+    summary.sort(key=lambda item: (-item["count"], item["protocol"]))
+    return summary[:12]
+
+
 def run_pipeline(
     *,
     mode: str,
@@ -97,6 +116,7 @@ def run_pipeline(
         "paths": [path.to_dict() for path in ranked_paths],
         "correlations": [candidate.to_dict() for candidate in correlations[:40]],
         "rawEvents": [event.to_dict() for event in raw_events[:100]],
+        "protocolSummary": _build_protocol_summary(raw_events),
         "report": report,
     }
 

@@ -21,6 +21,11 @@ FIELDS = (
     "tcp.dstport",
     "udp.srcport",
     "udp.dstport",
+    "tls.handshake.version",
+    "tls.record.version",
+    "http2.streamid",
+    "quic.version",
+    "dns.qry.name",
 )
 FLOW_IDLE_THRESHOLD = 0.9
 CLUSTER_GAP_THRESHOLD = 1.4
@@ -37,6 +42,7 @@ class PacketRecord:
     protocol: str
     src_port: int
     dst_port: int
+    query_name: str
 
 
 @dataclass(frozen=True)
@@ -51,6 +57,7 @@ class FlowBurst:
     protocol: str
     src_port: int
     dst_port: int
+    query_name: str
     flow_key: tuple[str, str, str, int, int]
     suspicious_score: float
 
@@ -96,13 +103,43 @@ def _rows_to_packets(rows: list[list[str]]) -> list[PacketRecord]:
         if len(row) < len(FIELDS):
             row = row + [""] * (len(FIELDS) - len(row))
 
-        timestamp, frame_len, src_ip, dst_ip, ip_proto, tcp_src, tcp_dst, udp_src, udp_dst = row[: len(FIELDS)]
+        (
+            timestamp,
+            frame_len,
+            src_ip,
+            dst_ip,
+            ip_proto,
+            tcp_src,
+            tcp_dst,
+            udp_src,
+            udp_dst,
+            tls_handshake_version,
+            tls_record_version,
+            http2_stream_id,
+            quic_version,
+            dns_query_name,
+        ) = row[: len(FIELDS)]
         if not timestamp or not frame_len or not src_ip or not dst_ip:
             continue
 
-        protocol = _protocol_name(ip_proto, tcp_src, udp_src)
         src_port = _first_int(tcp_src, udp_src)
         dst_port = _first_int(tcp_dst, udp_dst)
+        protocol = _protocol_name({
+            "ip_proto": ip_proto,
+            "tcp_src": tcp_src,
+            "tcp_dst": tcp_dst,
+            "udp_src": udp_src,
+            "udp_dst": udp_dst,
+            "src_ip": src_ip,
+            "dst_ip": dst_ip,
+            "src_port": src_port,
+            "dst_port": dst_port,
+            "tls_handshake_version": tls_handshake_version,
+            "tls_record_version": tls_record_version,
+            "http2_stream_id": http2_stream_id,
+            "quic_version": quic_version,
+            "dns_query_name": dns_query_name,
+        })
         packets.append(
             PacketRecord(
                 timestamp=float(timestamp),
@@ -112,6 +149,7 @@ def _rows_to_packets(rows: list[list[str]]) -> list[PacketRecord]:
                 protocol=protocol,
                 src_port=src_port,
                 dst_port=dst_port,
+                query_name=dns_query_name,
             )
         )
     return packets
@@ -272,6 +310,7 @@ def _collapse_burst(
         protocol=packets[0].protocol,
         src_port=packets[0].src_port,
         dst_port=packets[0].dst_port,
+        query_name=packets[0].query_name,
         flow_key=flow_key,
         suspicious_score=round(suspicious_score, 6),
     )
@@ -305,16 +344,51 @@ def _flow_key(packet: PacketRecord) -> tuple[str, str, str, int, int]:
     return (ordered[0], ordered[1], packet.protocol, min(packet.src_port, packet.dst_port), max(packet.src_port, packet.dst_port))
 
 
-def _protocol_name(ip_proto: str, tcp_src: str, udp_src: str) -> str:
-    if tcp_src:
-        return "TCP"
-    if udp_src:
+def _protocol_name(context: dict[str, object]) -> str:
+    src_ip = str(context["src_ip"])
+    dst_ip = str(context["dst_ip"])
+    src_port = int(context["src_port"])
+    dst_port = int(context["dst_port"])
+    ip_proto = str(context["ip_proto"])
+    tls_handshake_version = str(context["tls_handshake_version"])
+    tls_record_version = str(context["tls_record_version"])
+    http2_stream_id = str(context["http2_stream_id"])
+    quic_version = str(context["quic_version"])
+    dns_query_name = str(context["dns_query_name"]).strip()
+
+    if src_ip.startswith("127.") and dst_ip.startswith("127."):
+        if src_port == 3000 or dst_port == 3000:
+            return "LOCAL_APP"
+        return "LOOPBACK"
+
+    if dns_query_name and 443 in {src_port, dst_port}:
+        return "DNS_OVER_HTTPS"
+    if dns_query_name and 853 in {src_port, dst_port}:
+        return "DNS_OVER_TLS"
+    if dns_query_name:
+        return "DNS"
+    if quic_version:
+        return "QUIC"
+    if http2_stream_id:
+        return "HTTP2"
+    if tls_handshake_version or tls_record_version:
+        version = tls_handshake_version or tls_record_version
+        if version in {"0x0304", "772"}:
+            return "TLS1.3"
+        if version in {"0x0303", "771"}:
+            return "TLS1.2"
+        return "TLS"
+    if 443 in {src_port, dst_port}:
+        return "HTTPS"
+    if 80 in {src_port, dst_port}:
+        return "HTTP"
+    if ip_proto == "1":
+        return "ICMP"
+    if ip_proto == "17":
         return "UDP"
-    return {
-        "1": "ICMP",
-        "6": "TCP",
-        "17": "UDP",
-    }.get(ip_proto, "IP")
+    if ip_proto == "6":
+        return "TCP"
+    return "IP"
 
 
 def _first_int(*values: str) -> int:

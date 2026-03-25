@@ -12,6 +12,7 @@ const dbPath = path.join(dataDir, "app.db");
 fs.mkdirSync(dataDir, { recursive: true });
 
 const db = new DatabaseSync(dbPath);
+const tokenTtlHours = Number(process.env.AUTH_TOKEN_TTL_HOURS ?? 8);
 
 db.exec(`
   PRAGMA journal_mode = WAL;
@@ -28,6 +29,8 @@ db.exec(`
     token TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
     created_at TEXT NOT NULL,
+    expires_at TEXT,
+    revoked_at TEXT,
     FOREIGN KEY(user_id) REFERENCES users(id)
   );
 
@@ -52,10 +55,41 @@ db.exec(`
     finished_at TEXT,
     FOREIGN KEY(session_id) REFERENCES sessions(id)
   );
+
+  CREATE TABLE IF NOT EXISTS audit_logs (
+    id TEXT PRIMARY KEY,
+    actor_id TEXT,
+    actor_username TEXT,
+    action TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id TEXT,
+    metadata_json TEXT,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_auth_tokens_user_id ON auth_tokens(user_id);
+  CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_jobs_status_created_at ON jobs(status, created_at);
+  CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
 `);
+
+for (const statement of [
+  "ALTER TABLE auth_tokens ADD COLUMN expires_at TEXT",
+  "ALTER TABLE auth_tokens ADD COLUMN revoked_at TEXT",
+]) {
+  try {
+    db.exec(statement);
+  } catch {
+    // Column already exists on newer databases.
+  }
+}
 
 const defaultUsername = process.env.APP_DEFAULT_USER ?? "admin";
 const defaultPassword = process.env.APP_DEFAULT_PASS ?? "admin123";
+const analystUsername = process.env.APP_ANALYST_USER ?? "analyst";
+const analystPassword = process.env.APP_ANALYST_PASS ?? "analyst123";
+const viewerUsername = process.env.APP_VIEWER_USER ?? "viewer";
+const viewerPassword = process.env.APP_VIEWER_PASS ?? "viewer123";
 
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString("hex");
@@ -63,10 +97,8 @@ function hashPassword(password) {
   return `${salt}:${hash}`;
 }
 
-function ensureDefaultUser() {
-  const existing = db
-    .prepare("SELECT id FROM users WHERE username = ?")
-    .get(defaultUsername);
+function ensureUser({ username, password, role }) {
+  const existing = db.prepare("SELECT id FROM users WHERE username = ?").get(username);
   if (existing) {
     return;
   }
@@ -75,14 +107,32 @@ function ensureDefaultUser() {
     "INSERT INTO users (id, username, password_hash, role, created_at) VALUES (?, ?, ?, ?, ?)",
   ).run(
     `user_${crypto.randomUUID()}`,
-    defaultUsername,
-    hashPassword(defaultPassword),
-    "admin",
+    username,
+    hashPassword(password),
+    role,
     new Date().toISOString(),
   );
 }
 
-ensureDefaultUser();
+function ensureDefaultUsers() {
+  ensureUser({
+    username: defaultUsername,
+    password: defaultPassword,
+    role: "admin",
+  });
+  ensureUser({
+    username: analystUsername,
+    password: analystPassword,
+    role: "analyst",
+  });
+  ensureUser({
+    username: viewerUsername,
+    password: viewerPassword,
+    role: "viewer",
+  });
+}
+
+ensureDefaultUsers();
 
 function parseJson(value, fallback = null) {
   if (!value) {
@@ -116,6 +166,133 @@ export function getDefaultCredentials() {
   return {
     username: defaultUsername,
     password: defaultPassword,
+  };
+}
+
+export function listDemoAccounts() {
+  return [
+    { username: defaultUsername, password: defaultPassword, role: "admin" },
+    { username: analystUsername, password: analystPassword, role: "analyst" },
+    { username: viewerUsername, password: viewerPassword, role: "viewer" },
+  ];
+}
+
+export function listUsers() {
+  return db
+    .prepare(
+      `
+        SELECT id, username, role, created_at
+        FROM users
+        ORDER BY created_at ASC
+      `,
+    )
+    .all()
+    .map((row) => ({
+      id: row.id,
+      username: row.username,
+      role: row.role,
+      createdAt: row.created_at,
+    }));
+}
+
+export function listAuditLogs(limit = 150) {
+  return db
+    .prepare(
+      `
+        SELECT id, actor_id, actor_username, action, target_type, target_id, metadata_json, created_at
+        FROM audit_logs
+        ORDER BY created_at DESC
+        LIMIT ?
+      `,
+    )
+    .all(limit)
+    .map((row) => ({
+      id: row.id,
+      actorId: row.actor_id,
+      actorUsername: row.actor_username,
+      action: row.action,
+      targetType: row.target_type,
+      targetId: row.target_id,
+      metadata: parseJson(row.metadata_json, {}),
+      createdAt: row.created_at,
+    }));
+}
+
+export function recordAuditEvent({
+  actorId = null,
+  actorUsername = null,
+  action,
+  targetType,
+  targetId = null,
+  metadata = {},
+}) {
+  db.prepare(
+    `
+      INSERT INTO audit_logs (id, actor_id, actor_username, action, target_type, target_id, metadata_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+  ).run(
+    `audit_${crypto.randomUUID()}`,
+    actorId,
+    actorUsername,
+    action,
+    targetType,
+    targetId,
+    JSON.stringify(metadata ?? {}),
+    new Date().toISOString(),
+  );
+}
+
+export function createUserAccount({ username, password, role }) {
+  if (!username || !password || !role) {
+    throw new Error("username, password, and role are required");
+  }
+
+  const existing = db.prepare("SELECT id FROM users WHERE username = ?").get(username);
+  if (existing) {
+    throw new Error("A user with that username already exists");
+  }
+
+  const id = `user_${crypto.randomUUID()}`;
+  const createdAt = new Date().toISOString();
+  db.prepare(
+    `
+      INSERT INTO users (id, username, password_hash, role, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `,
+  ).run(id, username, hashPassword(password), role, createdAt);
+
+  return {
+    id,
+    username,
+    role,
+    createdAt,
+  };
+}
+
+export function updateUserAccount(id, { role, password }) {
+  const current = db
+    .prepare("SELECT id, username, role, created_at, password_hash FROM users WHERE id = ?")
+    .get(id);
+  if (!current) {
+    throw new Error("User not found");
+  }
+
+  const nextRole = role ?? current.role;
+  const nextPasswordHash = password ? hashPassword(password) : current.password_hash;
+  db.prepare(
+    `
+      UPDATE users
+      SET role = ?, password_hash = ?
+      WHERE id = ?
+    `,
+  ).run(nextRole, nextPasswordHash, id);
+
+  return {
+    id: current.id,
+    username: current.username,
+    role: nextRole,
+    createdAt: current.created_at,
   };
 }
 
@@ -231,23 +408,66 @@ export function verifyPassword(password, storedHash) {
 
 export function createAuthToken(userId) {
   const token = crypto.randomBytes(32).toString("hex");
+  const createdAt = new Date();
+  const expiresAt = new Date(createdAt.getTime() + tokenTtlHours * 60 * 60 * 1000);
   db.prepare(
-    "INSERT INTO auth_tokens (token, user_id, created_at) VALUES (?, ?, ?)",
-  ).run(token, userId, new Date().toISOString());
-  return token;
+    "INSERT INTO auth_tokens (token, user_id, created_at, expires_at, revoked_at) VALUES (?, ?, ?, ?, NULL)",
+  ).run(token, userId, createdAt.toISOString(), expiresAt.toISOString());
+  return {
+    token,
+    expiresAt: expiresAt.toISOString(),
+    expiresInHours: tokenTtlHours,
+  };
 }
 
 export function findUserByToken(token) {
-  return db
+  const row = db
     .prepare(
       `
-        SELECT users.*
+        SELECT users.*, auth_tokens.expires_at, auth_tokens.revoked_at
         FROM auth_tokens
         JOIN users ON users.id = auth_tokens.user_id
         WHERE auth_tokens.token = ?
       `,
     )
     .get(token);
+
+  if (!row) {
+    return null;
+  }
+
+  if (row.revoked_at) {
+    return null;
+  }
+
+  if (row.expires_at && new Date(row.expires_at).getTime() <= Date.now()) {
+    revokeAuthToken(token);
+    return null;
+  }
+
+  return row;
+}
+
+export function revokeAuthToken(token) {
+  db.prepare(
+    `
+      UPDATE auth_tokens
+      SET revoked_at = ?
+      WHERE token = ? AND revoked_at IS NULL
+    `,
+  ).run(new Date().toISOString(), token);
+}
+
+export function cleanupExpiredTokens() {
+  db.prepare(
+    `
+      UPDATE auth_tokens
+      SET revoked_at = COALESCE(revoked_at, ?)
+      WHERE expires_at IS NOT NULL
+        AND expires_at <= ?
+        AND revoked_at IS NULL
+    `,
+  ).run(new Date().toISOString(), new Date().toISOString());
 }
 
 export { dbPath };

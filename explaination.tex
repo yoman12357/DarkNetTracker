@@ -367,7 +367,7 @@ For a live demo, it is best to capture for a short period such as 8 seconds and 
 The backend is started by \texttt{backend/server.js}. It creates the Express app, HTTP server, and WebSocket server; configures CORS and JSON parsing; creates an uploads directory; wires Multer storage; and exposes the API routes.
 
 \section{Authentication Flow}
-The backend exposes \texttt{/api/bootstrap} to reveal local demo credentials. The frontend uses that only for convenience. Real authentication occurs through \texttt{/api/auth/login}, which issues a random token stored in SQLite. Protected routes are covered by \texttt{requireAuth}.
+The backend exposes \texttt{/api/bootstrap} to reveal local demo credentials. The frontend uses that only for convenience. Real authentication occurs through \texttt{/api/auth/login}, which issues a random token stored in SQLite. In the strengthened version, tokens carry an expiry timestamp, can be revoked through logout, and are rejected automatically if expired. Protected routes are covered by \texttt{requireAuth}, and role-sensitive routes are further protected by \texttt{requireRole}.
 
 \section{Session Lifecycle}
 Every user-triggered action creates a session with an ID, mode, input label, status, config, and later a result or error. A corresponding job is queued in the \texttt{jobs} table. When the queue processes the job, the session changes from queued to running to completed or failed.
@@ -421,7 +421,7 @@ The following chapters explain every meaningful file in the repository. For each
 \section{\texttt{service.py}}
 \textbf{Purpose.} This is the orchestration layer of the analysis engine.
 
-\textbf{What it does.} It selects the input source based on mode, runs feature extraction, correlation, path ranking, estimation, evaluation, optional logging, and final report rendering. It returns a structured dictionary containing meta, summary, estimates, evaluation, paths, correlations, sampled raw events, and the terminal report.
+\textbf{What it does.} It selects the input source based on mode, runs feature extraction, correlation, path ranking, estimation, evaluation, optional logging, protocol summarization, and final report rendering. It returns a structured dictionary containing meta, summary, estimates, evaluation, paths, correlations, sampled raw events, protocol summaries, and the terminal report.
 
 \textbf{Why it exists.} Without this file, the project would duplicate workflow logic between the CLI and API bridge.
 
@@ -448,7 +448,7 @@ The following chapters explain every meaningful file in the repository. For each
 \section{\texttt{docker-compose.yml}}
 \textbf{Purpose.} Container orchestration for frontend and backend.
 
-\textbf{Why it matters.} It shows that the project was designed with deployment and reproducibility in mind, even though live capture remains a host-sensitive feature.
+\textbf{Why it matters.} It shows that the project was designed with deployment and reproducibility in mind, even though live capture remains a host-sensitive feature. In the upgraded version it also captures environment defaults for multiple user roles and persistent mounts for backend data and uploads.
 
 \section{\texttt{main.tex}}
 \textbf{Purpose.} The academic report.
@@ -495,9 +495,9 @@ The following chapters explain every meaningful file in the repository. For each
 \section{\texttt{capture/pcap.py}}
 \textbf{Purpose.} PCAP parsing and conversion into \texttt{RawEvent} instances.
 
-\textbf{Important pieces.} \texttt{PacketRecord}, \texttt{FlowBurst}, \texttt{load\_pcap\_events()}, \texttt{rows\_to\_events()}, \texttt{\_extract\_tshark\_rows()}, \texttt{\_rows\_to\_packets()}, \texttt{\_packets\_to\_events()}, \texttt{\_build\_flow\_bursts()}, \texttt{\_cluster\_bursts()}, \texttt{\_cluster\_to\_sequences()}, and helper functions for mapping, classification, flow keys, and protocol detection.
+\textbf{Important pieces.} \texttt{PacketRecord}, \texttt{FlowBurst}, \texttt{load\_pcap\_events()}, \texttt{rows\_to\_events()}, \texttt{\_extract\_tshark\_rows()}, \texttt{\_rows\_to\_packets()}, \texttt{\_packets\_to\_events()}, \texttt{\_build\_flow\_bursts()}, \texttt{\_cluster\_bursts()}, \texttt{\_cluster\_to\_sequences()}, and helper functions for mapping, classification, flow keys, and protocol fingerprinting.
 
-\textbf{Why it matters.} This file is the bridge from low-level captured packets to the higher-level path abstraction used by the core algorithm. It is also the most heuristic-heavy file in the repository.
+\textbf{Why it matters.} This file is the bridge from low-level captured packets to the higher-level path abstraction used by the core algorithm. It is also the most heuristic-heavy file in the repository. The upgraded parser distinguishes metadata patterns such as TLS~1.3, TLS~1.2, HTTP/2, QUIC, DNS over HTTPS, and DNS over TLS when the underlying capture fields support those inferences.
 
 \textbf{Interview explanation.} This is the best file to discuss when asked about turning raw system data into structured algorithmic inputs.
 
@@ -571,22 +571,28 @@ The following chapters explain every meaningful file in the repository. For each
 \section{\texttt{backend/package.json}}
 \textbf{Purpose.} Backend package manifest.
 
-\textbf{Dependencies.} \texttt{express}, \texttt{cors}, \texttt{multer}, and \texttt{ws}.
+\textbf{Dependencies.} \texttt{express}, \texttt{cors}, \texttt{multer}, \texttt{ws}, and \texttt{pdfkit}.
 
 \section{\texttt{backend/server.js}}
 \textbf{Purpose.} Main backend entry point.
 
 \textbf{Why it matters.} This is the server process that creates the HTTP API and WebSocket server.
 
+\textbf{Updated responsibilities.} In the upgraded version it also exposes CSV, HTML, and server-side PDF export endpoints, plus admin-only user-management routes for listing, creating, and updating users.
+
 \section{\texttt{backend/auth.js}}
 \textbf{Purpose.} Authentication helper layer.
 
-\textbf{Why it matters.} It isolates token extraction, login, and route protection from route definitions.
+\textbf{Why it matters.} It isolates token extraction, login, route protection, and role checks from route definitions.
+
+\textbf{Updated responsibilities.} The upgraded version also performs expired-token cleanup and exposes logout logic that revokes tokens instead of relying only on client-side state clearing.
 
 \section{\texttt{backend/db.js}}
 \textbf{Purpose.} SQLite schema initialization and data access layer.
 
 \textbf{Why it matters.} It provides real persistence and a clear session model.
+
+\textbf{Updated responsibilities.} The database layer now seeds administrative, analyst, and viewer demo accounts; stores token expiry and revocation timestamps; captures audit logs; and exposes helper methods for listing users, creating users, and updating roles or passwords.
 
 \section{\texttt{backend/queue.js}}
 \textbf{Purpose.} Queued background execution of sessions.
@@ -606,6 +612,8 @@ The following chapters explain every meaningful file in the repository. For each
 \section{\texttt{backend/Dockerfile}}
 \textbf{Purpose.} Backend containerization instructions.
 
+\textbf{Why it matters.} The final Dockerfile installs Node.js runtime dependencies, Python~3, and TShark so that the container has the same cross-language execution surface as the host-based development workflow.
+
 \section{\texttt{backend/.env.example}}
 \textbf{Purpose.} Example backend configuration for demo credentials and runtime settings.
 
@@ -613,18 +621,34 @@ The following chapters explain every meaningful file in the repository. For each
 \section{\texttt{frontend/package.json}}
 \textbf{Purpose.} Frontend package manifest.
 
+\textbf{Updated dependencies.} The final version adds \texttt{reactflow} so that topology visualization is implemented with a dedicated graph library rather than a custom SVG-only rendering approach.
+
 \section{\texttt{frontend/app/layout.js}}
 \textbf{Purpose.} Root layout wrapper and metadata declaration.
 
 \section{\texttt{frontend/app/globals.css}}
 \textbf{Purpose.} Global color palette, base styling, panel styling, and page background design.
 
+\textbf{Updated responsibilities.} The stylesheet now also defines the dashboard animation system, topology node styling, graph-panel presentation, and accessibility-minded reduced-motion behavior.
+
 \section{\texttt{frontend/app/page.js}}
 \textbf{Purpose.} Entire dashboard UI.
 
-\textbf{Why it matters.} This file contains authentication UI, form controls, uploads, live capture trigger, session listing, WebSocket integration, derived data rows, and visual panels.
+\textbf{Why it matters.} In the refactored version this file is now intentionally thinner and delegates most UI rendering and state management to reusable modules.
 
-\textbf{Interview explanation.} This file demonstrates frontend state orchestration, data fetching, and result presentation in a single coherent page.
+\textbf{Updated responsibilities.} In the upgraded version this file also contains the React Flow topology panel, CSV/PDF export controls, protocol summary rendering, role-aware interface restrictions, and the admin user-management panel.
+
+\textbf{Interview explanation.} This file demonstrates frontend state orchestration, data fetching, result presentation, graph-based visualization, and role-aware product behavior in a single coherent page.
+
+\section{\texttt{frontend/components/dashboard/ui.js}}
+\textbf{Purpose.} Reusable dashboard presentation layer.
+
+\textbf{Why it matters.} This file extracts the large collection of presentational components from the old monolithic page file. It now contains session cards, tables, charts, topology visualization, authentication screen, export panel, audit panel, and admin user-management UI.
+
+\section{\texttt{frontend/hooks/useDashboard.js}}
+\textbf{Purpose.} Centralized client-side state and action management for the dashboard.
+
+\textbf{Why it matters.} This refactor reduces page-level complexity by collecting fetch logic, session refresh logic, login/logout actions, audit refresh logic, and export handlers into a single hook that can be tested and reasoned about independently from the JSX layout.
 
 \section{\texttt{frontend/jsconfig.json}}
 \textbf{Purpose.} Frontend project configuration.
@@ -637,6 +661,8 @@ The following chapters explain every meaningful file in the repository. For each
 
 \section{\texttt{frontend/Dockerfile}}
 \textbf{Purpose.} Frontend containerization instructions.
+
+\textbf{Why it matters.} The final version runs the Next.js development server on \texttt{0.0.0.0}, which is important for container accessibility from the host browser.
 
 \section{\texttt{frontend/.env.example}}
 \textbf{Purpose.} Example frontend environment configuration, primarily the API base URL.
@@ -702,7 +728,7 @@ The project also has real limitations. PCAP and live inference remain heuristic-
 Possible improvements include richer protocol modeling, better flow segmentation, support for windowed multi-burst matching, graph-based confidence visualization, and formal benchmarking against larger labeled datasets.
 
 \section{Backend Improvements}
-Possible backend improvements include token expiration, role-based access control, better upload validation, a persistent external queue, and migration from SQLite to PostgreSQL.
+Possible backend improvements include stronger password policy enforcement, better upload validation, a persistent external queue, and a full migration from SQLite to PostgreSQL using the prepared schema reference.
 
 \section{Frontend Improvements}
 The frontend could be refactored into smaller components, include richer charts, support filtering and sorting, and add export features for reports and CSV results.
@@ -770,19 +796,19 @@ The hosted version should favor simulation, replay, and possibly PCAP upload. Re
 
 \chapter{Suggested Viva and Resume Language}
 \section{Viva Summary}
-This project demonstrates a controlled traffic-analysis platform where metadata from simulated, replayed, offline packet captures, and live network observation is transformed into correlation candidates, ranked routing paths, and probabilistic source-region estimates. The platform is implemented as a modular Python engine with a Node backend and a React-based dashboard.
+This project demonstrates a controlled traffic-analysis platform where metadata from simulated, replayed, offline packet captures, and live network observation is transformed into correlation candidates, ranked routing paths, and probabilistic source-region estimates. The platform is implemented as a modular Python engine with a Node backend and a React-based dashboard that includes a dedicated topology graph, protocol fingerprint summaries, exportable reports, and role-based analyst workflows.
 
 \section{Resume Bullet 1}
-Developed a Python-based traffic-correlation engine with feature extraction, hop scoring, path ranking, probabilistic region estimation, and evaluation across simulated, replayed, PCAP, and live-capture inputs.
+Developed a Python-based traffic-correlation engine with feature extraction, hop scoring, path ranking, probabilistic region estimation, protocol fingerprinting, and evaluation across simulated, replayed, PCAP, and live-capture inputs.
 
 \section{Resume Bullet 2}
-Built a full-stack dashboard using Express.js, SQLite, WebSockets, Next.js, and Tailwind CSS for authenticated session management, dataset uploads, queued analysis jobs, and real-time result visualization.
+Built a full-stack dashboard using Express.js, SQLite, WebSockets, Next.js, Tailwind CSS, and React Flow for authenticated session management, role-aware access control, token expiry/logout handling, dataset uploads, queued analysis jobs, and real-time topology visualization.
 
 \section{Resume Bullet 3}
-Integrated TShark-based packet metadata ingestion and refined PCAP burst clustering logic to convert real packet captures into structured analysis sessions suitable for academic traffic-analysis demonstrations.
+Integrated TShark-based packet metadata ingestion and refined PCAP burst clustering logic to convert real packet captures into structured analysis sessions, then added analyst-facing CSV/PDF export, audit logging, and admin user-management capabilities for presentation-ready demonstrations.
 
 \chapter{Final Assessment}
-This project is sufficiently broad and technically rich to discuss in an interview or internship setting. It demonstrates system design, cross-language integration, algorithmic modeling, asynchronous orchestration, UI engineering, testing, and documentation. Its strengths should be presented confidently, and its limitations should be presented honestly. That combination usually leaves a stronger impression than overclaiming.
+This project is sufficiently broad and technically rich to discuss in an interview or internship setting. It demonstrates system design, cross-language integration, algorithmic modeling, asynchronous orchestration, UI engineering, graph-based visualization, server-side document generation, access-control design, audit logging, testing, and documentation. Its strengths should be presented confidently, and its limitations should be presented honestly. That combination usually leaves a stronger impression than overclaiming.
 
 \chapter*{Appendix A: Quick Command Reference}
 \addcontentsline{toc}{chapter}{Appendix A: Quick Command Reference}
@@ -796,6 +822,7 @@ python3 engine_api.py --mode simulate --sessions 18 --top-k 8
 python3 -m unittest discover -s tests -v
 npm --prefix backend run dev
 npm --prefix frontend run dev
+docker-compose up --build
 \end{lstlisting}
 
 \chapter*{Appendix B: File Inventory}
@@ -831,11 +858,15 @@ npm --prefix frontend run dev
 \texttt{data/nodes.py} & Node registry and region metadata \\
 \texttt{backend/server.js} & Express server and routes \\
 \texttt{backend/auth.js} & Auth helper layer \\
-\texttt{backend/db.js} & SQLite initialization and data access \\
+\texttt{backend/db.js} & SQLite initialization, auth token storage, and audit-log data access \\
 \texttt{backend/queue.js} & Job queue logic \\
 \texttt{backend/pythonRunner.js} & Python process bridge \\
 \texttt{backend/socketHub.js} & WebSocket broadcast support \\
-\texttt{frontend/app/page.js} & Main dashboard page \\
+\texttt{backend/postgres\_schema.sql} & PostgreSQL-ready schema reference \\
+\texttt{docker-compose.yml} & Container orchestration for frontend/backend demo stack \\
+\texttt{frontend/app/page.js} & Thin dashboard page entry point \\
+\texttt{frontend/components/dashboard/ui.js} & Reusable dashboard presentation components \\
+\texttt{frontend/hooks/useDashboard.js} & Dashboard state and action hook \\
 \texttt{frontend/app/layout.js} & Root layout \\
 \texttt{frontend/app/globals.css} & Global styling \\
 \texttt{tests/test\_pipeline.py} & Pipeline validation \\

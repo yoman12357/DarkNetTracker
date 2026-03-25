@@ -184,8 +184,11 @@ The final implementation supports four traffic input modes:
     \item terminal and browser-based output,
     \item persistent session storage,
     \item protected backend access,
+    \item multi-user role-based access for admin, analyst, and viewer accounts,
     \item analysis of replay files and PCAPs,
-    \item live capture support using host tools.
+    \item live capture support using host tools,
+    \item interactive topology visualization using a dedicated graph library,
+    \item exportable CSV and server-generated PDF reports.
 \end{itemize}
 
 \section{Out-of-Scope Features}
@@ -242,9 +245,11 @@ The analysis engine includes the following modules:
 The backend is implemented in Node.js using Express.js. It includes:
 \begin{itemize}[leftmargin=1.5em]
     \item login endpoint,
+    \item admin-only user management endpoints,
     \item session creation endpoints,
     \item replay and PCAP upload endpoints,
     \item live-capture initiation endpoint,
+    \item CSV and PDF export endpoints,
     \item SQLite-backed persistent storage,
     \item background job queue,
     \item WebSocket updates for session state.
@@ -258,8 +263,11 @@ The frontend is implemented using Next.js and Tailwind CSS. It includes:
     \item replay/PCAP upload panel,
     \item live-capture controls,
     \item session list,
+    \item role-aware controls and admin user-management panel,
+    \item React Flow-based topology graph,
     \item ranked path tables,
     \item confidence chart and score plot,
+    \item CSV/PDF export controls,
     \item terminal report panel.
 \end{itemize}
 
@@ -342,7 +350,7 @@ PCAP mode uses TShark to read packet capture files and export selected metadata 
     \item converts one rich cluster into multiple candidate sessions,
     \item maps those sessions into entry/middle/exit evidence for downstream correlation.
 \end{enumerate}
-This part was refined during development because real PCAP files initially produced over-compressed outputs.
+This part was refined during development because real PCAP files initially produced over-compressed outputs. In the final version, protocol fingerprinting was expanded to distinguish patterns such as TLS~1.3, TLS~1.2, HTTP/2, QUIC, DNS over HTTPS, and DNS over TLS wherever sufficient packet metadata is available.
 
 \section{Live Mode}
 Live mode captures packet metadata for a user-specified duration using TShark. The output is then processed through the same burst and clustering logic as PCAP mode. Live mode is useful for demonstration because traffic can be generated during the capture window, for example using \texttt{ping}, \texttt{curl}, or DNS queries.
@@ -352,13 +360,14 @@ The backend uses SQLite for persistence. It stores:
 \begin{itemize}[leftmargin=1.5em]
     \item users,
     \item auth tokens,
+    \item audit logs,
     \item sessions,
     \item jobs.
 \end{itemize}
-This ensures that session history remains available even after multiple requests and page refreshes.
+This ensures that session history, authentication state, and administrative audit trails remain available even after multiple requests and page refreshes. The schema was also prepared for future PostgreSQL migration by keeping the stored structures explicit and portable.
 
 \section{Authentication}
-A token-based authentication mechanism protects the API. A default administrative account is seeded for local demo use. The frontend performs login and then sends the issued token automatically with authenticated requests.
+A token-based authentication mechanism protects the API. The final implementation supports seeded administrative, analyst, and viewer accounts, with role-aware route protection, token expiry, explicit logout, and token revocation. The frontend performs login and then sends the issued token automatically with authenticated requests. Administrative users can additionally create new accounts and update roles or passwords through the dashboard, while security-relevant actions are captured in the audit log.
 
 \section{Queue and Job Lifecycle}
 Each analysis request becomes a queued job. The job runner marks jobs as queued, running, completed, or failed. This is especially useful for live capture mode where analysis is not instantaneous.
@@ -384,8 +393,13 @@ The dashboard includes:
     \item evaluation snapshot,
     \item confidence distribution chart,
     \item path score curve,
+    \item React Flow-based interactive topology map,
+    \item protocol fingerprint summary cards,
     \item ranked path table,
     \item hop-correlation table,
+    \item CSV and PDF export panel,
+    \item admin user-management panel,
+    \item audit log review panel,
     \item terminal report panel.
 \end{itemize}
 
@@ -526,7 +540,11 @@ Live mode works best when the user deliberately generates traffic during the cap
     \item full-stack interface,
     \item support for multiple analysis modes,
     \item usable session persistence,
-    \item real integration with TShark.
+    \item real integration with TShark,
+    \item interactive topology visualization,
+    \item protocol-aware capture fingerprinting,
+    \item role-aware multi-user access,
+    \item exportable analyst-facing reports.
 \end{itemize}
 
 \section{Observed Weaknesses}
@@ -562,6 +580,7 @@ The validation strategy used in this project emphasizes:
 \begin{itemize}[leftmargin=1.5em]
     \item reproducibility on synthetic and replay data,
     \item functionality on PCAP and live inputs,
+    \item explicit acknowledgement of heuristic limits in capture-based inference,
     \item conservative interpretation of outputs,
     \item alignment with defensive-security research.
 \end{itemize}
@@ -571,7 +590,7 @@ The validation strategy used in this project emphasizes:
 This system is intended for controlled cybersecurity analysis, teaching, and laboratory demonstrations. It is not a tool for payload decryption, direct identity exposure, or real-world deanonymization.
 
 \section{Security Considerations}
-The backend uses authentication, local persistence, and server-side job handling. Uploaded files are processed locally. However, production hardening such as role-based access control, token expiration, secure secret management, and hardened deployment has not been the primary focus of this academic implementation.
+The backend uses authentication, token expiry, logout-based token revocation, role-based access control, local persistence, audit logging, and server-side job handling. Uploaded files are processed locally. However, production hardening such as secure secret management, stronger password policy enforcement, and hardened deployment has not been the primary focus of this academic implementation.
 
 \section{Limitations}
 \begin{itemize}[leftmargin=1.5em]
@@ -586,18 +605,17 @@ The backend uses authentication, local persistence, and server-side job handling
 \section{Short-Term Improvements}
 \begin{itemize}[leftmargin=1.5em]
     \item richer PCAP feature extraction,
-    \item protocol-specific flow modeling,
+    \item deeper protocol-specific flow modeling beyond the current fingerprint layer,
     \item improved scoring for DNS and mixed-flow captures,
-    \item exportable PDF/CSV reports from the dashboard,
-    \item more detailed graph visualization.
+    \item richer analyst report templates,
+    \item more advanced graph interaction and path filtering.
 \end{itemize}
 
 \section{Medium-Term Improvements}
 \begin{itemize}[leftmargin=1.5em]
-    \item multi-user support,
-    \item token expiration and user management,
+    \item stronger password policy enforcement and account recovery flows,
     \item background worker scaling,
-    \item Postgres-based persistence,
+    \item full PostgreSQL migration for higher concurrency,
     \item authenticated report downloads.
 \end{itemize}
 
@@ -611,7 +629,7 @@ The backend uses authentication, local persistence, and server-side job handling
 \end{itemize}
 
 \chapter{Conclusion}
-This project demonstrates that a traffic-correlation idea from a PRD can be transformed into a full working system with both analytical rigor and practical presentation value. The final platform includes simulation, replay, PCAP upload, and live capture analysis; an explainable scoring pipeline; a persistent backend; and a browser dashboard suitable for faculty demonstration. The results confirm that metadata-based correlation can support probabilistic origin estimation in controlled environments, while also highlighting the practical limitations of extending such methods to real-world anonymous-network traffic. The project therefore succeeds as a cybersecurity research platform, an educational full-stack system, and a technically defensible academic submission.
+This project demonstrates that a traffic-correlation idea from a PRD can be transformed into a full working system with both analytical rigor and practical presentation value. The final platform includes simulation, replay, PCAP upload, and live capture analysis; an explainable scoring pipeline; protocol-aware capture fingerprinting; role-based multi-user access; exportable analyst reports; and a browser dashboard with an interactive topology graph suitable for faculty demonstration. The results confirm that metadata-based correlation can support probabilistic origin estimation in controlled environments, while also highlighting the practical limitations of extending such methods to real-world anonymous-network traffic. The project therefore succeeds as a cybersecurity research platform, an educational full-stack system, and a technically defensible academic submission.
 
 \chapter*{Appendix A: Important Files}
 \addcontentsline{toc}{chapter}{Appendix A: Important Files}
@@ -634,10 +652,17 @@ This project demonstrates that a traffic-correlation idea from a PRD can be tran
 \texttt{processing/correlator.py} & Hop similarity scoring \\
 \texttt{processing/graph.py} & Path construction \\
 \texttt{processing/estimator.py} & Region estimation \\
+\texttt{backend/auth.js} & Role-aware authentication and authorization middleware \\
 \texttt{backend/server.js} & Backend API server \\
-\texttt{backend/db.js} & SQLite persistence layer \\
+\texttt{backend/db.js} & SQLite persistence, token handling, and audit-log storage \\
 \texttt{backend/queue.js} & Job queue logic \\
-\texttt{frontend/app/page.js} & Web dashboard UI \\
+\texttt{backend/pythonRunner.js} & Python engine bridge \\
+\texttt{docker-compose.yml} & Container orchestration for backend and frontend \\
+\texttt{backend/postgres\_schema.sql} & PostgreSQL-ready schema reference \\
+\texttt{frontend/app/page.js} & Thin page entry point for the refactored dashboard \\
+\texttt{frontend/components/dashboard/ui.js} & Reusable dashboard UI components \\
+\texttt{frontend/hooks/useDashboard.js} & Client-side dashboard state and action hook \\
+\texttt{frontend/app/globals.css} & Dashboard animation and global style layer \\
 \bottomrule
 \end{longtable}
 
