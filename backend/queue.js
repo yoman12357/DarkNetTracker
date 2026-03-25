@@ -1,9 +1,17 @@
 import crypto from "node:crypto";
 
-import { createJob, listQueuedJobs, updateJob, updateSession } from "./db.js";
+import {
+  claimNextQueuedJob,
+  createJob,
+  hasQueuedJobs,
+  recoverStaleRunningJobs,
+  updateJob,
+  updateSession,
+} from "./db.js";
 import { runPythonAnalysis } from "./pythonRunner.js";
 
 let queuePromise = null;
+const LEASE_MS = 5 * 60 * 1000;
 
 export function enqueueSessionJob(session, broadcast) {
   createJob({
@@ -15,18 +23,26 @@ export function enqueueSessionJob(session, broadcast) {
   if (!queuePromise) {
     queuePromise = processQueue(broadcast).finally(() => {
       queuePromise = null;
+      if (hasQueuedJobs()) {
+        queuePromise = processQueue(broadcast).finally(() => {
+          queuePromise = null;
+        });
+      }
     });
   }
 }
 
 async function processQueue(broadcast) {
-  const jobs = listQueuedJobs();
+  recoverStaleRunningJobs();
 
-  for (const job of jobs) {
-    updateJob(job.id, {
-      status: "running",
-      startedAt: new Date().toISOString(),
-    });
+  while (true) {
+    const startedAt = new Date().toISOString();
+    const leaseExpiresAt = new Date(Date.now() + LEASE_MS).toISOString();
+    const job = claimNextQueuedJob({ startedAt, leaseExpiresAt });
+
+    if (!job) {
+      return;
+    }
 
     const runningSession = updateSession(job.sessionId, { status: "running" });
     broadcast({ type: "session.updated", payload: runningSession });
@@ -46,6 +62,8 @@ async function processQueue(broadcast) {
       updateJob(job.id, {
         status: "completed",
         finishedAt: new Date().toISOString(),
+        leaseExpiresAt: null,
+        lastError: null,
       });
       const completedSession = updateSession(job.sessionId, {
         status: "completed",
@@ -54,14 +72,34 @@ async function processQueue(broadcast) {
       });
       broadcast({ type: "session.updated", payload: completedSession });
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const shouldRetry = (job.attempt_count ?? 0) < (job.max_attempts ?? 2);
+
+      if (shouldRetry) {
+        updateJob(job.id, {
+          status: "queued",
+          finishedAt: null,
+          leaseExpiresAt: null,
+          lastError: message,
+        });
+        const retriedSession = updateSession(job.sessionId, {
+          status: "queued",
+          error: `Retry scheduled after transient failure: ${message}`,
+        });
+        broadcast({ type: "session.updated", payload: retriedSession });
+        continue;
+      }
+
       updateJob(job.id, {
         status: "failed",
         finishedAt: new Date().toISOString(),
+        leaseExpiresAt: null,
+        lastError: message,
       });
       const failedSession = updateSession(job.sessionId, {
         status: "failed",
         finishedAt: new Date().toISOString(),
-        error: error instanceof Error ? error.message : String(error),
+        error: message,
       });
       broadcast({ type: "session.updated", payload: failedSession });
     }

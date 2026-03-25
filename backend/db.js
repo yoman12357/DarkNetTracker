@@ -15,7 +15,10 @@ const db = new DatabaseSync(dbPath);
 const tokenTtlHours = Number(process.env.AUTH_TOKEN_TTL_HOURS ?? 8);
 
 db.exec(`
+  PRAGMA foreign_keys = ON;
   PRAGMA journal_mode = WAL;
+  PRAGMA synchronous = NORMAL;
+  PRAGMA busy_timeout = 5000;
 
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
@@ -53,6 +56,10 @@ db.exec(`
     created_at TEXT NOT NULL,
     started_at TEXT,
     finished_at TEXT,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 2,
+    last_error TEXT,
+    lease_expires_at TEXT,
     FOREIGN KEY(session_id) REFERENCES sessions(id)
   );
 
@@ -70,12 +77,17 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_auth_tokens_user_id ON auth_tokens(user_id);
   CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_jobs_status_created_at ON jobs(status, created_at);
+  CREATE INDEX IF NOT EXISTS idx_jobs_lease_expires_at ON jobs(lease_expires_at);
   CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
 `);
 
 for (const statement of [
   "ALTER TABLE auth_tokens ADD COLUMN expires_at TEXT",
   "ALTER TABLE auth_tokens ADD COLUMN revoked_at TEXT",
+  "ALTER TABLE jobs ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0",
+  "ALTER TABLE jobs ADD COLUMN max_attempts INTEGER NOT NULL DEFAULT 2",
+  "ALTER TABLE jobs ADD COLUMN last_error TEXT",
+  "ALTER TABLE jobs ADD COLUMN lease_expires_at TEXT",
 ]) {
   try {
     db.exec(statement);
@@ -344,8 +356,19 @@ export function updateSession(id, patch) {
 export function createJob({ id, sessionId, status }) {
   db.prepare(
     `
-      INSERT INTO jobs (id, session_id, status, created_at, started_at, finished_at)
-      VALUES (?, ?, ?, ?, NULL, NULL)
+      INSERT INTO jobs (
+        id,
+        session_id,
+        status,
+        created_at,
+        started_at,
+        finished_at,
+        attempt_count,
+        max_attempts,
+        last_error,
+        lease_expires_at
+      )
+      VALUES (?, ?, ?, ?, NULL, NULL, 0, 2, NULL, NULL)
     `,
   ).run(id, sessionId, status, new Date().toISOString());
 }
@@ -369,10 +392,80 @@ export function listQueuedJobs() {
       createdAt: row.created_at,
       startedAt: row.started_at,
       finishedAt: row.finished_at,
+      attemptCount: row.attempt_count ?? 0,
+      maxAttempts: row.max_attempts ?? 2,
+      lastError: row.last_error ?? null,
+      leaseExpiresAt: row.lease_expires_at ?? null,
       mode: row.mode,
       inputLabel: row.input_label,
       config: parseJson(row.config_json, {}),
     }));
+}
+
+export function hasQueuedJobs() {
+  const row = db
+    .prepare("SELECT COUNT(*) AS total FROM jobs WHERE status = 'queued'")
+    .get();
+  return Number(row?.total ?? 0) > 0;
+}
+
+export function recoverStaleRunningJobs(referenceTime = new Date().toISOString()) {
+  db.prepare(
+    `
+      UPDATE jobs
+      SET status = 'queued',
+          lease_expires_at = NULL,
+          last_error = COALESCE(last_error, 'Recovered after stale running lease')
+      WHERE status = 'running'
+        AND lease_expires_at IS NOT NULL
+        AND lease_expires_at <= ?
+    `,
+  ).run(referenceTime);
+}
+
+export function claimNextQueuedJob({ leaseExpiresAt, startedAt }) {
+  const next = db
+    .prepare(
+      `
+        SELECT jobs.id
+        FROM jobs
+        WHERE jobs.status = 'queued'
+        ORDER BY jobs.created_at ASC
+        LIMIT 1
+      `,
+    )
+    .get();
+
+  if (!next) {
+    return null;
+  }
+
+  const result = db.prepare(
+    `
+      UPDATE jobs
+      SET status = 'running',
+          started_at = COALESCE(started_at, ?),
+          attempt_count = COALESCE(attempt_count, 0) + 1,
+          lease_expires_at = ?,
+          last_error = NULL
+      WHERE id = ? AND status = 'queued'
+    `,
+  ).run(startedAt, leaseExpiresAt, next.id);
+
+  if (!result.changes) {
+    return null;
+  }
+
+  return db
+    .prepare(
+      `
+        SELECT jobs.*, sessions.mode, sessions.input_label, sessions.config_json
+        FROM jobs
+        JOIN sessions ON sessions.id = jobs.session_id
+        WHERE jobs.id = ?
+      `,
+    )
+    .get(next.id);
 }
 
 export function updateJob(id, patch) {
@@ -384,13 +477,15 @@ export function updateJob(id, patch) {
   db.prepare(
     `
       UPDATE jobs
-      SET status = ?, started_at = ?, finished_at = ?
+      SET status = ?, started_at = ?, finished_at = ?, last_error = ?, lease_expires_at = ?
       WHERE id = ?
     `,
   ).run(
     updated.status,
     updated.startedAt ?? updated.started_at ?? null,
     updated.finishedAt ?? updated.finished_at ?? null,
+    updated.lastError ?? updated.last_error ?? null,
+    updated.leaseExpiresAt ?? updated.lease_expires_at ?? null,
     id,
   );
   return db.prepare("SELECT * FROM jobs WHERE id = ?").get(id);

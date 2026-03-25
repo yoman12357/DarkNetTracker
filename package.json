@@ -5,6 +5,7 @@
   "scripts": {
     "backend:dev": "npm --prefix backend run dev",
     "frontend:dev": "npm --prefix frontend run dev",
-    "test:python": "python3 -m unittest discover -s tests -v"
+    "test:python": "python3 -m unittest discover -s tests -v",
+    "benchmark:python": "python3 tests/benchmark_pipeline.py"
   }
 }

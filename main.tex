@@ -364,13 +364,13 @@ The backend uses SQLite for persistence. It stores:
     \item sessions,
     \item jobs.
 \end{itemize}
-This ensures that session history, authentication state, and administrative audit trails remain available even after multiple requests and page refreshes. The schema was also prepared for future PostgreSQL migration by keeping the stored structures explicit and portable.
+This ensures that session history, authentication state, and administrative audit trails remain available even after multiple requests and page refreshes. The final implementation also enables SQLite WAL mode, foreign-key enforcement, and a busy timeout so the local database behaves more reliably under repeated dashboard activity. The schema was also prepared for future PostgreSQL migration by keeping the stored structures explicit and portable.
 
 \section{Authentication}
 A token-based authentication mechanism protects the API. The final implementation supports seeded administrative, analyst, and viewer accounts, with role-aware route protection, token expiry, explicit logout, and token revocation. The frontend performs login and then sends the issued token automatically with authenticated requests. Administrative users can additionally create new accounts and update roles or passwords through the dashboard, while security-relevant actions are captured in the audit log.
 
 \section{Queue and Job Lifecycle}
-Each analysis request becomes a queued job. The job runner marks jobs as queued, running, completed, or failed. This is especially useful for live capture mode where analysis is not instantaneous.
+Each analysis request becomes a queued job. The job runner marks jobs as queued, running, completed, or failed, and the improved version also supports retry attempts and stale-job recovery so interrupted work does not remain permanently stuck in the running state. This is especially useful for live capture mode where analysis is not instantaneous.
 
 \chapter{Frontend Design and Visualization}
 \section{Design Goals}
@@ -512,6 +512,7 @@ python3 main.py --mode live --interface any --capture-seconds 8
 \section{Testing Commands}
 \begin{lstlisting}[style=codeblock]
 python3 -m unittest discover -s tests -v
+npm run benchmark:python
 \end{lstlisting}
 
 \chapter{Experimental Results}
@@ -561,8 +562,12 @@ Automated tests were written for:
     \item simulation pipeline,
     \item replay pipeline,
     \item CSV and JSONL consistency,
-    \item PCAP parser clustering behavior.
+    \item PCAP parser clustering behavior,
+    \item multi-seed simulation benchmark regression.
 \end{itemize}
+
+\section{Benchmarking}
+To strengthen the evaluation story beyond single-case screenshots, the project now includes a repeatable Python benchmark command that runs the simulation pipeline across multiple random seeds and reports aggregate accuracy and top-region hit rate. This does not turn the project into a formal research benchmark suite, but it does provide a more defensible regression baseline for future tuning.
 
 \section{Manual Validation}
 Manual validation included:
@@ -663,6 +668,8 @@ This project demonstrates that a traffic-correlation idea from a PRD can be tran
 \texttt{frontend/components/dashboard/ui.js} & Reusable dashboard UI components \\
 \texttt{frontend/hooks/useDashboard.js} & Client-side dashboard state and action hook \\
 \texttt{frontend/app/globals.css} & Dashboard animation and global style layer \\
+\texttt{tests/test\_benchmark\_regression.py} & Multi-seed simulation benchmark regression test \\
+\texttt{tests/benchmark\_pipeline.py} & Repeatable benchmark summary generator \\
 \bottomrule
 \end{longtable}
 

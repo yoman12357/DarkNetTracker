@@ -377,10 +377,10 @@ The queue exists because the backend should not block the request-response lifec
 
 \chapter{Frontend Architecture}
 \section{Single-Page Dashboard Design}
-The frontend is a single client-rendered dashboard page. This is a good choice for a small internal tool because all controls and results are visible together. The user does not need to navigate across many pages to understand the system.
+The user experience is still centered on a single dashboard route, but the implementation is no longer a monolithic page file. The final frontend keeps the one-screen workflow for demonstration while splitting rendering and state responsibilities across reusable modules such as \texttt{frontend/components/dashboard/ui.js}, \texttt{frontend/hooks/useDashboard.js}, and \texttt{frontend/lib/dashboard-utils.js}. This preserves presentation simplicity without keeping all logic in one place.
 
 \section{State Management}
-The frontend uses React state to track sessions, selected session ID, selected session details, simulation form fields, live form fields, replay file state, authentication state, and loading state. It then uses \texttt{useMemo} to derive table-ready arrays from the selected session.
+State management is coordinated through the \texttt{useDashboard()} hook. That hook owns authentication state, session refresh logic, export actions, audit-log refresh behavior, login/logout flow, and role-aware UI actions, while the page file acts mainly as a composition layer. This is a stronger architecture than keeping all fetch and state logic inline inside a single component.
 
 \section{WebSocket Integration}
 The frontend opens a WebSocket connection after login. Whenever a session is created or updated, the socket handler refreshes the session list and the selected session. This makes the dashboard feel live without introducing a full state-management library.
@@ -721,17 +721,17 @@ Vercel excels at frontend and serverless scenarios, but this backend expects a l
 The project has several strong engineering qualities. It is modular. It has a clean service boundary between Python and Node. It supports multiple input modes through a shared downstream pipeline. It includes persistence rather than using only in-memory state. It offers both terminal and browser output. It uses explicit algorithms rather than opaque black boxes. It handles asynchronous workflow through queued jobs and WebSocket updates. It has tests. It has documentation. It demonstrates iterative refinement, especially in the PCAP parser.
 
 \chapter{Weaknesses and Limitations}
-The project also has real limitations. PCAP and live inference remain heuristic-heavy. Evaluation metrics are strongest only for labeled data. The current frontend is implemented in one large page component and could be split into smaller modules. SQLite is sufficient for local use but not ideal for high-concurrency or distributed deployment. The current authentication model is adequate for a demo but not hardened for production. The legacy scripts suggest the repository contains exploratory artifacts that could be cleaned up further.
+The project also has real limitations. PCAP and live inference remain heuristic-heavy. Evaluation metrics are strongest on labeled data, even though the benchmark suite is now broader than the initial single-run checks. SQLite has been tuned with WAL mode, foreign-key enforcement, busy timeouts, and persisted job recovery, but it is still not the best long-term choice for multi-instance hosted deployments. The queue now supports retry and stale-job recovery, yet it remains an in-process worker rather than a distributed queue. The legacy scripts also show that the repository contains exploratory artifacts from the project’s earlier phase.
 
 \chapter{What Could Be Improved Next}
 \section{Algorithmic Improvements}
 Possible improvements include richer protocol modeling, better flow segmentation, support for windowed multi-burst matching, graph-based confidence visualization, and formal benchmarking against larger labeled datasets.
 
 \section{Backend Improvements}
-Possible backend improvements include stronger password policy enforcement, better upload validation, a persistent external queue, and a full migration from SQLite to PostgreSQL using the prepared schema reference.
+Possible backend improvements include stronger password policy enforcement, better upload validation, a persistent external queue such as Redis-backed workers, and a full migration from SQLite to PostgreSQL using the prepared schema reference.
 
 \section{Frontend Improvements}
-The frontend could be refactored into smaller components, include richer charts, support filtering and sorting, and add export features for reports and CSV results.
+The frontend refactor has already been completed at the component and hook level, so the next frontend improvements are more about polish than structure. Useful next steps include richer charts, better filtering and sorting, denser comparison views, and more advanced graph interaction for larger session sets.
 
 \section{DevOps Improvements}
 The project could gain CI pipelines, containerized integration tests, deployment profiles, and better environment separation for dev, demo, and hosted modes.
@@ -759,7 +759,7 @@ The hardest part was PCAP parsing. Real packet captures are noisy and do not nat
 The biggest tradeoff is between realism and explainability. Highly realistic traffic-analysis systems are complex and uncertain. This project intentionally uses explicit heuristics and transparent formulas so it remains explainable and defensible.
 
 \section{What would you improve if given more time?}
-I would improve protocol-specific flow modeling, split the frontend into smaller components, harden authentication, move to PostgreSQL for hosted deployments, and build a richer benchmarking suite for capture data.
+I would improve protocol-specific flow modeling, move the persisted queue to an external worker system, migrate hosted deployments to PostgreSQL, strengthen password policy and operational hardening, and build a richer benchmarking suite for more diverse capture datasets.
 
 \chapter{How to Explain the Project in Two Minutes}
 This project is a controlled full-stack traffic-correlation platform designed for cybersecurity research and academic demonstration. It accepts four input modes: simulation, replay, PCAP, and live capture. The Python engine converts those inputs into raw events, extracts features, scores adjacent hops using timing, size, and sequence similarity, builds ranked paths, and estimates probable origin regions. The Express backend manages authentication, persistence, uploads, queued jobs, and WebSocket updates. The Next.js frontend provides a dashboard for launching sessions and inspecting the results visually. The project is explainable, modular, and presentation-ready, while staying inside ethical research boundaries.
@@ -773,7 +773,13 @@ Create \texttt{backend/.env} from \texttt{backend/.env.example}. Typical values 
 \begin{lstlisting}[style=codeblock]
 APP_DEFAULT_USER=admin
 APP_DEFAULT_PASS=admin123
+APP_ANALYST_USER=analyst
+APP_ANALYST_PASS=analyst123
+APP_VIEWER_USER=viewer
+APP_VIEWER_PASS=viewer123
+HOST=0.0.0.0
 PORT=4000
+AUTH_TOKEN_TTL_HOURS=8
 \end{lstlisting}
 
 \section{Frontend Environment}
@@ -787,6 +793,7 @@ NEXT_PUBLIC_API_BASE=http://localhost:4000
 npm --prefix backend install
 npm --prefix frontend install
 python3 -m unittest discover -s tests -v
+npm run benchmark:python
 npm --prefix backend run dev
 npm --prefix frontend run dev
 \end{lstlisting}
@@ -820,6 +827,7 @@ python3 main.py --mode pcap --dataset tests/sample_data/better_capture2.pcap
 python3 main.py --mode live --interface any --capture-seconds 8
 python3 engine_api.py --mode simulate --sessions 18 --top-k 8
 python3 -m unittest discover -s tests -v
+npm run benchmark:python
 npm --prefix backend run dev
 npm --prefix frontend run dev
 docker-compose up --build
@@ -871,6 +879,8 @@ docker-compose up --build
 \texttt{frontend/app/globals.css} & Global styling \\
 \texttt{tests/test\_pipeline.py} & Pipeline validation \\
 \texttt{tests/test\_pcap\_parser.py} & Parser validation \\
+\texttt{tests/test\_benchmark\_regression.py} & Multi-seed benchmark regression test \\
+\texttt{tests/benchmark\_pipeline.py} & Repeatable benchmark summary generator \\
 \bottomrule
 \end{longtable}
 
