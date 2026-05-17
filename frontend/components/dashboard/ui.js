@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import ReactFlow, { Background, Controls, MarkerType, MiniMap } from "reactflow";
 import "reactflow/dist/style.css";
 
@@ -43,13 +44,16 @@ export function Metric({ label, value, accent = false }) {
 }
 
 export function DataTable({ title, columns, rows, emptyLabel = "No data yet." }) {
+  const tableId = `${title.replace(/\s+/g, "-").toLowerCase()}-title`;
   return (
     <div className="panel overflow-hidden">
       <div className="border-b border-[rgba(20,33,61,0.08)] px-5 py-4">
-        <h3 className="text-lg font-semibold">{title}</h3>
+        <h3 className="text-lg font-semibold" id={tableId}>
+          {title}
+        </h3>
       </div>
       <div className="overflow-x-auto">
-        <table className="min-w-full text-left text-sm">
+        <table className="min-w-full text-left text-sm" aria-labelledby={tableId}>
           <thead className="bg-[rgba(20,33,61,0.04)] text-[#5f6b7a]">
             <tr>
               {columns.map((column) => (
@@ -419,12 +423,14 @@ export function AdminUsersPanel({
           <div className="text-sm font-semibold text-[#14213d]">Create user</div>
           <div className="mt-4 grid gap-3">
             <input
+              aria-label="New username"
               className="w-full rounded-xl border border-[rgba(20,33,61,0.1)] px-3 py-2"
               placeholder="Username"
               value={draft.username}
               onChange={(event) => setDraft((current) => ({ ...current, username: event.target.value }))}
             />
             <input
+              aria-label="New password"
               className="w-full rounded-xl border border-[rgba(20,33,61,0.1)] px-3 py-2"
               placeholder="Password"
               type="password"
@@ -432,6 +438,7 @@ export function AdminUsersPanel({
               onChange={(event) => setDraft((current) => ({ ...current, password: event.target.value }))}
             />
             <select
+              aria-label="New user role"
               className="w-full rounded-xl border border-[rgba(20,33,61,0.1)] px-3 py-2"
               value={draft.role}
               onChange={(event) => setDraft((current) => ({ ...current, role: event.target.value }))}
@@ -464,6 +471,7 @@ export function AdminUsersPanel({
                   </div>
                   <div className="grid gap-3 md:grid-cols-[140px_1fr_auto]">
                     <select
+                      aria-label={`Role for ${user.username}`}
                       className="rounded-xl border border-[rgba(20,33,61,0.1)] px-3 py-2"
                       value={user.draftRole ?? user.role}
                       onChange={(event) => updateDraft(user.id, { draftRole: event.target.value })}
@@ -473,6 +481,7 @@ export function AdminUsersPanel({
                       <option value="admin">admin</option>
                     </select>
                     <input
+                      aria-label={`Password for ${user.username}`}
                       className="rounded-xl border border-[rgba(20,33,61,0.1)] px-3 py-2"
                       placeholder="Optional new password"
                       type="password"
@@ -537,12 +546,14 @@ export function AuthScreen({ auth, setAuth, authState, error, loading, handleLog
             <div className="text-sm font-semibold text-[#14213d]">Login</div>
             <div className="mt-4 grid gap-3">
               <input
+                aria-label="Login username"
                 className="w-full rounded-xl border border-[rgba(20,33,61,0.1)] px-3 py-3"
                 placeholder="Username"
                 value={auth.username}
                 onChange={(event) => setAuth((current) => ({ ...current, username: event.target.value }))}
               />
               <input
+                aria-label="Login password"
                 className="w-full rounded-xl border border-[rgba(20,33,61,0.1)] px-3 py-3"
                 placeholder="Password"
                 type="password"

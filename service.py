@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -17,6 +18,8 @@ from processing.graph import build_ranked_paths
 from ui.terminal import render_report
 from utils.io import write_jsonl
 from validation import validate_pipeline_inputs
+
+logger = logging.getLogger("darknettracker.pipeline")
 
 
 def _build_protocol_summary(raw_events: list[Any]) -> list[dict[str, Any]]:
@@ -50,6 +53,7 @@ def run_pipeline(
     capture_seconds: int = 8,
 ) -> dict[str, Any]:
     # Validate all inputs before processing
+    logger.info("Starting pipeline", extra={"mode": mode, "dataset": dataset, "sessions": sessions, "top_k": top_k})
     validate_pipeline_inputs(
         mode=mode,
         dataset=dataset,
@@ -77,10 +81,15 @@ def run_pipeline(
     else:
         raise ValueError(f"unsupported mode: {mode}")
 
+    logger.info("Raw events captured", extra={"mode": mode, "raw_events": len(raw_events)})
     features = extract_features(raw_events)
+    logger.info("Features extracted", extra={"mode": mode, "features": len(features)})
     correlations = correlate_hops(features, config)
+    logger.info("Correlations built", extra={"mode": mode, "correlations": len(correlations)})
     ranked_paths = build_ranked_paths(correlations, config)
+    logger.info("Ranked paths built", extra={"mode": mode, "ranked_paths": len(ranked_paths)})
     estimates = estimate_regions(ranked_paths, config)
+    logger.info("Regions estimated", extra={"mode": mode, "estimates": len(estimates)})
     evaluation = evaluate_estimates(raw_events, ranked_paths, estimates)
 
     if write_logs:

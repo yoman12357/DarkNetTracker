@@ -1,128 +1,216 @@
-/**
- * Security & Request Validation Middleware
- * Implements rate limiting, CORS restrictions, CSRF protection, and input validation
- */
+import crypto from "node:crypto";
+import path from "node:path";
 
+import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import { z } from "zod";
 
-// Rate limiting middleware
-export const createRateLimiter = (windowMs = 15 * 60 * 1000, maxRequests = 100) => {
-  return rateLimit({
-    windowMs,
-    max: maxRequests,
+import { config } from "./config.js";
+
+const uploadExtensionsByMode = {
+  replay: new Set([".jsonl", ".json", ".csv"]),
+  pcap: new Set([".pcap", ".pcapng"]),
+};
+
+const loginSchema = z.object({
+  username: z.string().trim().min(1).max(100),
+  password: z.string().min(1).max(256),
+});
+
+const simulateSchema = z.object({
+  sessions: z.number().int().min(1).max(1000).default(18),
+  seed: z.number().int().min(0).max(2 ** 31 - 1).default(7),
+  topK: z.number().int().min(1).max(50).default(8),
+  writeLogs: z.boolean().default(false),
+});
+
+const liveSchema = z.object({
+  interfaceName: z.string().trim().min(1).max(128).regex(/^[a-zA-Z0-9._-]+$/).default("any"),
+  captureSeconds: z.number().int().min(1).max(3600).default(8),
+  topK: z.number().int().min(1).max(50).default(8),
+  writeLogs: z.boolean().default(false),
+});
+
+const createUserSchema = z.object({
+  username: z.string().trim().min(3).max(64).regex(/^[a-zA-Z0-9_.-]+$/),
+  password: z.string().min(12).max(256),
+  role: z.enum(["admin", "analyst", "viewer"]),
+});
+
+const updateUserSchema = z.object({
+  role: z.enum(["admin", "analyst", "viewer"]).optional(),
+  password: z.string().min(12).max(256).optional(),
+});
+
+function buildOriginSet() {
+  return new Set(config.allowedOrigins);
+}
+
+export const securityHeaders = helmet({
+  contentSecurityPolicy: {
+    useDefaults: true,
+    directives: {
+      "default-src": ["'self'"],
+      "connect-src": ["'self'", ...config.allowedOrigins, "ws:", "wss:"],
+      "img-src": ["'self'", "data:", "blob:"],
+      "style-src": ["'self'", "'unsafe-inline'"],
+      "script-src": ["'self'", "'unsafe-inline'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+  hsts: config.isProduction,
+});
+
+export const corsOptions = {
+  origin(origin, callback) {
+    const allowedOrigins = buildOriginSet();
+    if (!origin || allowedOrigins.has(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-CSRF-Token", "X-Requested-With"],
+  exposedHeaders: ["X-Request-Id"],
+};
+
+export const createRateLimiter = () =>
+  rateLimit({
+    windowMs: config.requestLimitWindowMs,
+    max: config.requestLimitMax,
     message: "Too many requests from this IP, please try again later.",
     standardHeaders: true,
     legacyHeaders: false,
-    skip: (req) => req.ip === "127.0.0.1", // Allow localhost
   });
-};
 
-// Stricter rate limiter for auth endpoints
 export const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 5, // 5 attempts per 15 minutes
+  windowMs: config.requestLimitWindowMs,
+  max: config.authLimitMax,
   message: "Too many login attempts, please try again later.",
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true,
 });
 
-// File upload size validator
-export const validateUploadSize = (maxSizeBytes = 100 * 1024 * 1024) => {
+export const uploadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  message: "Too many file uploads, please try again later.",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+export function sanitizeFilename(filename) {
+  const base = path.basename(String(filename ?? "upload"));
+  return base
+    .replace(/[^\w.-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^\.+/, "")
+    .slice(0, 120);
+}
+
+export function validateUploadSize(maxSizeBytes = config.uploadLimitBytes) {
   return (req, res, next) => {
-    const contentLength = parseInt(req.headers["content-length"], 10);
-    if (contentLength > maxSizeBytes) {
+    const contentLength = Number.parseInt(req.headers["content-length"], 10);
+    if (Number.isFinite(contentLength) && contentLength > maxSizeBytes) {
       res.status(413).json({
-        error: `File too large. Maximum size is ${maxSizeBytes / 1024 / 1024}MB`,
+        error: `File too large. Maximum size is ${Math.floor(maxSizeBytes / (1024 * 1024))}MB`,
       });
       return;
     }
     next();
   };
-};
+}
 
-// Input sanitization validator
-export const validateSessionBody = (req, res, next) => {
-  const body = req.body || {};
+export function validateUploadFile(mode) {
+  return (req, _res, cb) => {
+    const extension = path.extname(req.file?.originalname ?? req.originalname ?? "").toLowerCase();
+    const allowedExtensions = uploadExtensionsByMode[mode];
 
-  // Validate sessions parameter
-  if (typeof body.sessions === "number") {
-    if (body.sessions < 1 || body.sessions > 1000) {
-      res.status(400).json({ error: "sessions must be between 1 and 1000" });
+    if (!allowedExtensions?.has(extension)) {
+      cb(new Error(`Unsupported file extension for ${mode}: ${extension || "unknown"}`));
+      return;
+    }
+
+    cb(null, true);
+  };
+}
+
+export function requireUploadExtension(mode) {
+  return (req, res, next) => {
+    const filename = req.file?.originalname ?? "";
+    const extension = path.extname(filename).toLowerCase();
+    const allowedExtensions = uploadExtensionsByMode[mode];
+
+    if (!allowedExtensions?.has(extension)) {
+      res.status(400).json({ error: `Unsupported file extension for ${mode}: ${extension || "unknown"}` });
+      return;
+    }
+
+    next();
+  };
+}
+
+export function createCsrfToken(authToken) {
+  return crypto.createHmac("sha256", config.csrfSecret).update(String(authToken)).digest("hex");
+}
+
+export function requireCsrfProtection(req, res, next) {
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+    next();
+    return;
+  }
+
+  const origin = req.headers.origin;
+  const referer = req.headers.referer;
+  const allowedOrigins = buildOriginSet();
+
+  if (origin && !allowedOrigins.has(origin)) {
+    res.status(403).json({ error: "Cross-site request blocked" });
+    return;
+  }
+
+  if (!origin && referer) {
+    const refererOrigin = new URL(referer).origin;
+    if (!allowedOrigins.has(refererOrigin)) {
+      res.status(403).json({ error: "Cross-site referer blocked" });
       return;
     }
   }
 
-  // Validate seed parameter
-  if (typeof body.seed === "number") {
-    if (body.seed < 0 || body.seed > Math.pow(2, 31) - 1) {
-      res.status(400).json({ error: "seed must be a valid 32-bit integer" });
-      return;
-    }
-  }
-
-  // Validate topK parameter
-  if (typeof body.topK === "number") {
-    if (body.topK < 1 || body.topK > 50) {
-      res.status(400).json({ error: "topK must be between 1 and 50" });
-      return;
-    }
-  }
-
-  // Validate writeLogs boolean
-  if (typeof body.writeLogs === "boolean") {
-    // Valid
+  const token = req.authToken;
+  const csrfHeader = req.get("x-csrf-token");
+  if (!token || !csrfHeader || csrfHeader !== createCsrfToken(token)) {
+    res.status(403).json({ error: "Invalid CSRF token" });
+    return;
   }
 
   next();
-};
+}
 
-// Filename sanitization
-export const sanitizeFilename = (filename) => {
-  // Remove path separators and dangerous characters
-  return filename
-    .replace(/\.\./g, "")
-    .replace(/[\/\\]/g, "")
-    .replace(/[<>:"|?*]/g, "")
-    .substring(0, 255);
-};
-
-// Interface name validator for live capture
-export const validateInterfaceName = (interfaceName) => {
-  if (!interfaceName || typeof interfaceName !== "string") {
-    return false;
-  }
-  // Allow alphanumeric, dots, hyphens, underscores
-  return /^[a-zA-Z0-9._\-]+$/.test(interfaceName);
-};
-
-// Security headers
-export const securityHeaders = (req, res, next) => {
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-Frame-Options", "DENY");
-  res.setHeader("X-XSS-Protection", "1; mode=block");
-  res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
-  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
-  res.setHeader("Content-Security-Policy", "default-src 'self'");
-  next();
-};
-
-// CORS configuration
-export const corsOptions = {
-  origin: (origin, callback) => {
-    const allowedOrigins = [
-      "http://localhost:3000",
-      "http://localhost:4000",
-      process.env.ALLOWED_ORIGINS?.split(",").map(o => o.trim()),
-    ].filter(Boolean).flat();
-
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
+export function validateRequest(schema, source = "body") {
+  return (req, res, next) => {
+    const target = req[source] ?? {};
+    const parsed = schema.safeParse(target);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: "Invalid request",
+        details: parsed.error.issues.map((issue) => ({
+          field: issue.path.join("."),
+          message: issue.message,
+        })),
+      });
+      return;
     }
-  },
-  credentials: true,
-  methods: ["GET", "POST", "PATCH", "DELETE"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-);
+    req[source] = parsed.data;
+    next();
+  };
+}
+
+export const validateLoginBody = validateRequest(loginSchema);
+export const validateSessionBody = validateRequest(simulateSchema);
+export const validateLiveSessionBody = validateRequest(liveSchema);
+export const validateCreateUserBody = validateRequest(createUserSchema);
+export const validateUpdateUserBody = validateRequest(updateUserSchema);

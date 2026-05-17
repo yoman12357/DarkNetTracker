@@ -3,18 +3,22 @@ import express from "express";
 import multer from "multer";
 import { WebSocketServer } from "ws";
 import { createServer } from "node:http";
+import { createServer as createHttpsServer } from "node:https";
 import crypto from "node:crypto";
 import PDFDocument from "pdfkit";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
 
 import { login, logout, requireAuth, requireRole } from "./auth.js";
+import { assertProductionConfig, config } from "./config.js";
 import {
   cleanupExpiredTokens,
   createUserAccount,
   createSession,
   getDefaultCredentials,
+  getOperationalStats,
   getSessionById,
   listDemoAccounts,
   listAuditLogs,
@@ -23,13 +27,23 @@ import {
   recordAuditEvent,
   updateUserAccount,
 } from "./db.js";
+import { getRequestMetrics } from "./metrics.js";
 import { enqueueSessionJob } from "./queue.js";
 import { broadcastEvent, registerSocketUpgrade } from "./socketHub.js";
 import {
   createRateLimiter,
   authLimiter,
+  createCsrfToken,
+  requireCsrfProtection,
   validateUploadSize,
   validateSessionBody,
+  validateLoginBody,
+  validateLiveSessionBody,
+  validateCreateUserBody,
+  validateUpdateUserBody,
+  uploadLimiter,
+  requireUploadExtension,
+  sanitizeFilename,
   securityHeaders,
   corsOptions,
 } from "./security.js";
@@ -37,19 +51,42 @@ import { logger, requestLogger, logError, logSessionEvent, logAuthEvent } from "
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const uploadsDir = path.join(__dirname, "uploads");
+assertProductionConfig();
+
+const uploadsDir = config.uploadsDir;
 
 await fs.mkdir(uploadsDir, { recursive: true });
 cleanupExpiredTokens();
 
 const app = express();
-const server = createServer(app);
+app.disable("x-powered-by");
+app.set("trust proxy", config.trustProxy);
+
+function createHttpServer(expressApp) {
+  if (config.tls.enabled && config.tls.keyPath && config.tls.certPath) {
+    return createHttpsServer(
+      {
+        key: fsSync.readFileSync(config.tls.keyPath),
+        cert: fsSync.readFileSync(config.tls.certPath),
+      },
+      expressApp,
+    );
+  }
+  return createServer(expressApp);
+}
+
+const server = createHttpServer(app);
 const wss = new WebSocketServer({ noServer: true });
 
 registerSocketUpgrade(server, wss);
 
 // Security and logging middleware
 app.use(securityHeaders);
+app.use((req, res, next) => {
+  req.id = crypto.randomUUID();
+  res.setHeader("X-Request-Id", req.id);
+  next();
+});
 app.use(requestLogger);
 app.use(cors(corsOptions));
 app.use(express.json({ limit: "2mb" }));
@@ -63,22 +100,23 @@ app.post("/api/auth/login", authLimiter);
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadsDir),
   filename: (_req, file, cb) => {
-    const safeName = `${Date.now()}-${file.originalname.replace(/\s+/g, "-").substring(0, 200)}`;
+    const safeName = `${Date.now()}-${sanitizeFilename(file.originalname)}`;
     cb(null, safeName);
   },
 });
 const upload = multer({
   storage,
-  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit
+  limits: { fileSize: config.uploadLimitBytes },
   fileFilter: (_req, file, cb) => {
-    // Allow common data file formats
+    const extension = path.extname(file.originalname).toLowerCase();
     const allowedMimes = [
       "application/octet-stream",
       "text/plain",
       "text/csv",
       "application/json",
     ];
-    if (allowedMimes.includes(file.mimetype)) {
+    const allowedExtensions = new Set([".jsonl", ".json", ".csv", ".pcap", ".pcapng"]);
+    if (allowedMimes.includes(file.mimetype) && allowedExtensions.has(extension)) {
       cb(null, true);
     } else {
       cb(new Error(`Unsupported file type: ${file.mimetype}`));
@@ -190,31 +228,31 @@ app.get("/api/health", (_req, res) => {
   });
 });
 
+app.get("/api/docs/openapi.yaml", async (_req, res, next) => {
+  try {
+    const specPath = path.join(__dirname, "..", "docs", "API_OPENAPI.yaml");
+    const contents = await fs.readFile(specPath, "utf8");
+    res.type("application/yaml").send(contents);
+  } catch (error) {
+    next(error);
+  }
+});
+
 app.get("/api/bootstrap", (_req, res) => {
   res.json({
-    defaultUser: getDefaultCredentials(),
-    demoAccounts: listDemoAccounts(),
+    defaultUser: config.isProduction ? null : getDefaultCredentials(),
+    demoAccounts: config.isProduction ? [] : listDemoAccounts(),
     capabilities: ["simulate", "replay", "pcap", "live"],
-    auth: { tokenTtlHours: Number(process.env.AUTH_TOKEN_TTL_HOURS ?? 8) },
+    auth: { tokenTtlHours: config.authTokenTtlHours },
+    security: {
+      csrfEnabled: true,
+      tlsEnabled: config.tls.enabled,
+    },
   });
 });
 
-app.post("/api/auth/login", (req, res) => {
-  const { username, password } = req.body || {};
-
-  // Input validation
-  if (!username || !password || typeof username !== "string" || typeof password !== "string") {
-    logAuthEvent("failed_login", username || "unknown", { reason: "invalid_input" });
-    res.status(400).json({ error: "Username and password are required" });
-    return;
-  }
-
-  if (username.length < 1 || username.length > 100) {
-    logAuthEvent("failed_login", username, { reason: "invalid_username_length" });
-    res.status(400).json({ error: "Invalid username" });
-    return;
-  }
-
+app.post("/api/auth/login", validateLoginBody, (req, res) => {
+  const { username, password } = req.body;
   const authSession = login(username, password);
   if (!authSession) {
     logAuthEvent("failed_login", username, { reason: "invalid_credentials" });
@@ -223,13 +261,14 @@ app.post("/api/auth/login", (req, res) => {
   }
 
   logAuthEvent("successful_login", username, { userId: authSession.user.id });
-  res.json(authSession);
+  res.json({ ...authSession, csrfToken: createCsrfToken(authSession.token) });
 });
 
 app.use("/api", requireAuth);
+app.use("/api", requireCsrfProtection);
 
 app.get("/api/auth/me", (req, res) => {
-  res.json({ user: req.user });
+  res.json({ user: req.user, csrfToken: createCsrfToken(req.authToken) });
 });
 
 app.post("/api/auth/logout", (req, res) => {
@@ -246,9 +285,9 @@ app.get("/api/audit-logs", requireRole(["admin"]), (req, res) => {
   res.json({ logs: listAuditLogs(limit) });
 });
 
-app.post("/api/users", requireRole(["admin"]), (req, res) => {
+app.post("/api/users", requireRole(["admin"]), validateCreateUserBody, (req, res) => {
   try {
-    const user = createUserAccount(req.body || {});
+    const user = createUserAccount(req.body);
     recordAuditEvent({
       actorId: req.user.id,
       actorUsername: req.user.username,
@@ -263,9 +302,9 @@ app.post("/api/users", requireRole(["admin"]), (req, res) => {
   }
 });
 
-app.patch("/api/users/:userId", requireRole(["admin"]), (req, res) => {
+app.patch("/api/users/:userId", requireRole(["admin"]), validateUpdateUserBody, (req, res) => {
   try {
-    const user = updateUserAccount(req.params.userId, req.body || {});
+    const user = updateUserAccount(req.params.userId, req.body);
     recordAuditEvent({
       actorId: req.user.id,
       actorUsername: req.user.username,
@@ -501,7 +540,10 @@ app.post("/api/sessions/simulate", requireRole(["admin", "analyst"]), validateSe
 app.post(
   "/api/sessions/replay",
   requireRole(["admin", "analyst"]),
+  uploadLimiter,
+  validateUploadSize(),
   upload.single("dataset"),
+  requireUploadExtension("replay"),
   (req, res) => {
   if (!req.file) {
     res.status(400).json({ error: "dataset file is required" });
@@ -536,7 +578,10 @@ app.post(
 app.post(
   "/api/sessions/pcap",
   requireRole(["admin", "analyst"]),
+  uploadLimiter,
+  validateUploadSize(),
   upload.single("dataset"),
+  requireUploadExtension("pcap"),
   (req, res) => {
   if (!req.file) {
     res.status(400).json({ error: "pcap file is required" });
@@ -568,13 +613,13 @@ app.post(
   enqueueSessionJob(session, broadcastEvent);
 });
 
-app.post("/api/sessions/live", requireRole(["admin", "analyst"]), (req, res) => {
+app.post("/api/sessions/live", requireRole(["admin", "analyst"]), validateLiveSessionBody, (req, res) => {
   const {
     interfaceName = "any",
     captureSeconds = 8,
     topK = 8,
     writeLogs = false,
-  } = req.body || {};
+  } = req.body;
 
   const session = createSession({
     id: `sess_${crypto.randomUUID()}`,
@@ -597,9 +642,58 @@ app.post("/api/sessions/live", requireRole(["admin", "analyst"]), (req, res) => 
   enqueueSessionJob(session, broadcastEvent);
 });
 
-const port = Number(process.env.PORT ?? 4000);
-const host = process.env.HOST ?? "0.0.0.0";
+app.get("/api/ready", (_req, res) => {
+  res.json({
+    ok: true,
+    uptimeSeconds: Math.round(process.uptime()),
+    env: config.env,
+    memory: process.memoryUsage(),
+  });
+});
 
-server.listen(port, host, () => {
-  console.log(`Backend listening on http://${host}:${port}`);
+app.get("/api/metrics", requireRole(["admin"]), (req, res) => {
+  res.json({
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    process: {
+      uptimeSeconds: Math.round(process.uptime()),
+      memory: process.memoryUsage(),
+    },
+    requests: getRequestMetrics(),
+    database: getOperationalStats(),
+    actor: req.user.username,
+  });
+});
+
+app.use((error, req, res, _next) => {
+  logError(error, { requestId: req.id, path: req.path, method: req.method });
+  if (error instanceof multer.MulterError) {
+    res.status(400).json({ error: error.message });
+    return;
+  }
+  res.status(500).json({ error: error?.message ?? "Internal server error", requestId: req.id });
+});
+
+let isShuttingDown = false;
+
+function shutdown(signal) {
+  if (isShuttingDown) {
+    return;
+  }
+  isShuttingDown = true;
+  logger.warn("Shutting down backend", { signal });
+  wss.clients.forEach((client) => client.close(1001, "Server shutting down"));
+  server.close(() => {
+    logger.info("Backend shutdown complete", { signal });
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 10_000).unref();
+}
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+server.listen(config.port, config.host, () => {
+  const protocol = config.tls.enabled ? "https" : "http";
+  console.log(`Backend listening on ${protocol}://${config.host}:${config.port}`);
 });

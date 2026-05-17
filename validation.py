@@ -9,6 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict, Field, ValidationError as PydanticValidationError, field_validator
+
 
 @dataclass
 class ValidationError(Exception):
@@ -83,6 +85,36 @@ def validate_capture_seconds(seconds: int) -> None:
         raise ValidationError("capture_seconds", f"must be between 1 and 3600, got {seconds}")
 
 
+class PipelineInputModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: str
+    dataset: str | Path | None = None
+    sessions: int = Field(default=18, ge=1, le=1000)
+    seed: int = Field(default=7, ge=0, le=2**31 - 1)
+    top_k: int | None = Field(default=None, ge=1, le=50)
+    interface: str | None = Field(default=None, min_length=1, max_length=128)
+    capture_seconds: int = Field(default=8, ge=1, le=3600)
+
+    @field_validator("mode")
+    @classmethod
+    def validate_mode_value(cls, value: str) -> str:
+        validate_mode(value)
+        return value
+
+    @field_validator("dataset")
+    @classmethod
+    def normalize_dataset(cls, value: str | Path | None) -> str | Path | None:
+        return value
+
+    @field_validator("interface")
+    @classmethod
+    def validate_interface_value(cls, value: str | None) -> str | None:
+        if value is not None:
+            validate_interface_name(value)
+        return value
+
+
 def validate_pipeline_inputs(
     mode: str,
     dataset: str | Path | None = None,
@@ -93,10 +125,19 @@ def validate_pipeline_inputs(
     capture_seconds: int = 8,
 ) -> None:
     """Validate all pipeline input parameters."""
-    validate_mode(mode)
-    validate_sessions(sessions)
-    validate_seed(seed)
-    validate_top_k(top_k)
+    try:
+        PipelineInputModel(
+            mode=mode,
+            dataset=dataset,
+            sessions=sessions,
+            seed=seed,
+            top_k=top_k,
+            interface=interface,
+            capture_seconds=capture_seconds,
+        )
+    except PydanticValidationError as exc:
+        issue = exc.errors()[0]
+        field = ".".join(str(part) for part in issue["loc"]) or "input"
+        raise ValidationError(field, issue["msg"]) from exc
+
     validate_dataset_path(dataset, mode)
-    validate_interface_name(interface)
-    validate_capture_seconds(capture_seconds)

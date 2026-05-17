@@ -1,107 +1,19 @@
 import { DatabaseSync } from "node:sqlite";
 import crypto from "node:crypto";
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { config } from "./config.js";
+import { runMigrations } from "./migrations.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const dataDir = path.join(__dirname, "data");
-const dbPath = path.join(dataDir, "app.db");
+const db = new DatabaseSync(config.dbPath);
+const tokenTtlHours = config.authTokenTtlHours;
 
-fs.mkdirSync(dataDir, { recursive: true });
+runMigrations(db);
 
-const db = new DatabaseSync(dbPath);
-const tokenTtlHours = Number(process.env.AUTH_TOKEN_TTL_HOURS ?? 8);
-
-db.exec(`
-  PRAGMA foreign_keys = ON;
-  PRAGMA journal_mode = WAL;
-  PRAGMA synchronous = NORMAL;
-  PRAGMA busy_timeout = 5000;
-
-  CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    username TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    role TEXT NOT NULL,
-    created_at TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS auth_tokens (
-    token TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    expires_at TEXT,
-    revoked_at TEXT,
-    FOREIGN KEY(user_id) REFERENCES users(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS sessions (
-    id TEXT PRIMARY KEY,
-    mode TEXT NOT NULL,
-    input_label TEXT NOT NULL,
-    status TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    finished_at TEXT,
-    config_json TEXT NOT NULL,
-    result_json TEXT,
-    error TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS jobs (
-    id TEXT PRIMARY KEY,
-    session_id TEXT NOT NULL,
-    status TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    started_at TEXT,
-    finished_at TEXT,
-    attempt_count INTEGER NOT NULL DEFAULT 0,
-    max_attempts INTEGER NOT NULL DEFAULT 2,
-    last_error TEXT,
-    lease_expires_at TEXT,
-    FOREIGN KEY(session_id) REFERENCES sessions(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS audit_logs (
-    id TEXT PRIMARY KEY,
-    actor_id TEXT,
-    actor_username TEXT,
-    action TEXT NOT NULL,
-    target_type TEXT NOT NULL,
-    target_id TEXT,
-    metadata_json TEXT,
-    created_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_auth_tokens_user_id ON auth_tokens(user_id);
-  CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at DESC);
-  CREATE INDEX IF NOT EXISTS idx_jobs_status_created_at ON jobs(status, created_at);
-  CREATE INDEX IF NOT EXISTS idx_jobs_lease_expires_at ON jobs(lease_expires_at);
-  CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
-`);
-
-for (const statement of [
-  "ALTER TABLE auth_tokens ADD COLUMN expires_at TEXT",
-  "ALTER TABLE auth_tokens ADD COLUMN revoked_at TEXT",
-  "ALTER TABLE jobs ADD COLUMN attempt_count INTEGER NOT NULL DEFAULT 0",
-  "ALTER TABLE jobs ADD COLUMN max_attempts INTEGER NOT NULL DEFAULT 2",
-  "ALTER TABLE jobs ADD COLUMN last_error TEXT",
-  "ALTER TABLE jobs ADD COLUMN lease_expires_at TEXT",
-]) {
-  try {
-    db.exec(statement);
-  } catch {
-    // Column already exists on newer databases.
-  }
-}
-
-const defaultUsername = process.env.APP_DEFAULT_USER ?? "admin";
-const defaultPassword = process.env.APP_DEFAULT_PASS ?? "admin123";
-const analystUsername = process.env.APP_ANALYST_USER ?? "analyst";
-const analystPassword = process.env.APP_ANALYST_PASS ?? "analyst123";
-const viewerUsername = process.env.APP_VIEWER_USER ?? "viewer";
-const viewerPassword = process.env.APP_VIEWER_PASS ?? "viewer123";
+const defaultUsername = config.defaults.adminUser;
+const defaultPassword = config.defaults.adminPass;
+const analystUsername = config.defaults.analystUser;
+const analystPassword = config.defaults.analystPass;
+const viewerUsername = config.defaults.viewerUser;
+const viewerPassword = config.defaults.viewerPass;
 
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString("hex");
@@ -315,6 +227,22 @@ export function listSessions() {
     .map(toSession);
 }
 
+export function getOperationalStats() {
+  const [users, sessions, jobs, auditLogs] = [
+    db.prepare("SELECT COUNT(*) AS total FROM users").get(),
+    db.prepare("SELECT COUNT(*) AS total FROM sessions").get(),
+    db.prepare("SELECT COUNT(*) AS total FROM jobs").get(),
+    db.prepare("SELECT COUNT(*) AS total FROM audit_logs").get(),
+  ];
+
+  return {
+    users: Number(users?.total ?? 0),
+    sessions: Number(sessions?.total ?? 0),
+    jobs: Number(jobs?.total ?? 0),
+    auditLogs: Number(auditLogs?.total ?? 0),
+  };
+}
+
 export function getSessionById(id) {
   return toSession(db.prepare("SELECT * FROM sessions WHERE id = ?").get(id));
 }
@@ -368,9 +296,9 @@ export function createJob({ id, sessionId, status }) {
         last_error,
         lease_expires_at
       )
-      VALUES (?, ?, ?, ?, NULL, NULL, 0, 2, NULL, NULL)
+      VALUES (?, ?, ?, ?, NULL, NULL, 0, ?, NULL, NULL)
     `,
-  ).run(id, sessionId, status, new Date().toISOString());
+  ).run(id, sessionId, status, new Date().toISOString(), config.pythonMaxRetries);
 }
 
 export function listQueuedJobs() {
@@ -565,4 +493,4 @@ export function cleanupExpiredTokens() {
   ).run(new Date().toISOString(), new Date().toISOString());
 }
 
-export { dbPath };
+export const dbPath = config.dbPath;

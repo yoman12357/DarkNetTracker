@@ -7,9 +7,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { config } from "./config.js";
+import { recordRequestMetric } from "./metrics.js";
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const logsDir = path.join(__dirname, "..", "logs");
+const logsDir = config.logsDir;
 
 // Ensure logs directory exists
 fs.mkdirSync(logsDir, { recursive: true });
@@ -28,6 +31,8 @@ function formatTimestamp(date = new Date()) {
 function formatLogEntry(level, message, data = {}) {
   return JSON.stringify({
     timestamp: formatTimestamp(),
+    service: "darknettracker-backend",
+    env: config.env,
     level,
     message,
     ...data,
@@ -68,9 +73,9 @@ export const logger = {
 // Express middleware for request logging
 export function requestLogger(req, res, next) {
   const startTime = Date.now();
-  const originalSend = res.send;
+  const originalJson = res.json.bind(res);
 
-  res.send = function (data) {
+  res.json = function (data) {
     const duration = Date.now() - startTime;
     const statusCode = res.statusCode;
     const logLevel = statusCode >= 400 ? "WARN" : "INFO";
@@ -82,10 +87,12 @@ export function requestLogger(req, res, next) {
       durationMs: duration,
       userAgent: req.get("user-agent"),
       ip: req.ip,
+      requestId: req.id,
       userId: req.user?.id || "anonymous",
     });
+    recordRequestMetric({ method: req.method, statusCode });
 
-    return originalSend.call(this, data);
+    return originalJson(data);
   };
 
   next();

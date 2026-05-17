@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ANALYST_ROLES, API_BASE, downloadBlob } from "../lib/dashboard-utils";
 
 export function useDashboard() {
+  const [bootstrapping, setBootstrapping] = useState(true);
   const [sessions, setSessions] = useState([]);
   const [selectedSessionId, setSelectedSessionId] = useState(null);
   const [selectedSession, setSelectedSession] = useState(null);
@@ -15,7 +16,13 @@ export function useDashboard() {
   const [replayFile, setReplayFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [auth, setAuth] = useState({ token: "", username: "", password: "", expiresAt: "" });
+  const [auth, setAuth] = useState({
+    token: "",
+    csrfToken: "",
+    username: "",
+    password: "",
+    expiresAt: "",
+  });
   const [authState, setAuthState] = useState({
     loggedIn: false,
     user: null,
@@ -29,7 +36,7 @@ export function useDashboard() {
   const isAdmin = authState.user?.role === "admin";
 
   function hardLogout() {
-    setAuth({ token: "", username: "", password: "", expiresAt: "" });
+    setAuth({ token: "", csrfToken: "", username: "", password: "", expiresAt: "" });
     setAuthState((current) => ({ ...current, loggedIn: false, user: null }));
     setSessions([]);
     setSelectedSessionId(null);
@@ -39,11 +46,13 @@ export function useDashboard() {
   }
 
   async function authorizedFetch(url, options = {}) {
+    const method = options.method ?? "GET";
     const response = await fetch(url, {
       ...options,
       headers: {
         ...(options.headers ?? {}),
         Authorization: `Bearer ${auth.token}`,
+        ...(method !== "GET" ? { "X-CSRF-Token": auth.csrfToken } : {}),
       },
     });
     if (response.status === 401) {
@@ -112,14 +121,19 @@ export function useDashboard() {
           demoAccounts: data.demoAccounts ?? [],
           tokenTtlHours: data.auth?.tokenTtlHours ?? 8,
         }));
-        setAuth((current) => ({
-          ...current,
-          username: data.defaultUser?.username ?? "",
-          password: data.defaultUser?.password ?? "",
-        }));
+        if (data.defaultUser) {
+          setAuth((current) => ({
+            ...current,
+            username: data.defaultUser?.username ?? "",
+            password: data.defaultUser?.password ?? "",
+          }));
+        }
       })
       .catch(() => {
         setError("Failed to reach the backend bootstrap endpoint.");
+      })
+      .finally(() => {
+        setBootstrapping(false);
       });
   }, []);
 
@@ -191,7 +205,12 @@ export function useDashboard() {
       if (!response.ok) {
         throw new Error(data.error ?? "Login failed");
       }
-      setAuth((current) => ({ ...current, token: data.token, expiresAt: data.expiresAt ?? "" }));
+      setAuth((current) => ({
+        ...current,
+        token: data.token,
+        csrfToken: data.csrfToken ?? "",
+        expiresAt: data.expiresAt ?? "",
+      }));
       setAuthState((current) => ({ ...current, loggedIn: true, user: data.user }));
     });
   }
@@ -376,6 +395,7 @@ export function useDashboard() {
     replayFile,
     setReplayFile,
     loading,
+    bootstrapping,
     error,
     auth,
     setAuth,

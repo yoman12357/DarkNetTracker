@@ -1,365 +1,327 @@
-# DARK - Traffic Correlation Platform
-## Distributed Anonymous Routing Correlation Kit
+# DarkNetTracker
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![Node.js 18+](https://img.shields.io/badge/node-18+-green.svg)](https://nodejs.org/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+## Traffic Correlation Research Platform
 
-A full-stack controlled traffic-correlation platform for anonymous-routing-style research, featuring real-time analysis, multi-format exports, and role-based access control.
-
-**Status**: ✅ Production Ready | **Version**: 1.0.0 | **Last Updated**: May 17, 2026
-
-## 📋 Quick Links
-
-- [Features](#-features)
-- [Quick Start](#-quick-start)
-- [Installation](#-installation)
-- [Configuration](#-configuration)
-- [Usage](#-usage)
-- [API Docs](#-api-endpoints)
-- [Testing](#-testing)
-- [Deployment](#-deployment)
-- [Troubleshooting](#-troubleshooting)
-- [Security](#-security)
-
-## ✨ Features
-
-### Core Analysis
-- **4 Analysis Modes**: Simulate | Replay (JSONL/CSV) | PCAP | Live Capture
-- **Hop Correlation**: Time & size-based packet matching with confidence scoring
-- **Path Ranking**: Probabilistic ranking with multi-factor weighting
-- **Region Estimation**: Geographic origin prediction with confidence intervals
-- **Evaluation Metrics**: Accuracy assessment, false positive reduction
-
-### Platform Capabilities
-- **REST API**: Token-based auth with role-based access control
-- **Real-time Updates**: WebSocket streaming for live session monitoring
-- **Web Dashboard**: React/Next.js UI with Tailwind styling
-- **Database**: SQLite with WAL mode for concurrent access
-- **Job Queue**: Async processing with automatic retry logic
-- **Audit Logging**: Complete action tracking for compliance
-
-### Reporting & Export
-- **Multi-Format Export**: PDF (styled), CSV (data), HTML (web-ready)
-- **Terminal Reports**: ASCII-formatted correlation results
-- **Session History**: Full metadata and configuration tracking
-- **Real-time Dashboard**: Charts, metrics, live updates
-
-## 🚀 Quick Start
-
-```bash
-# 1. Verify environment
-python3 check_setup.py
-
-# 2. Install dependencies
-npm --prefix backend install && npm --prefix frontend install
-
-# 3. Start backend (Terminal 1)
-npm --prefix backend run dev     # http://localhost:4000
-
-# 4. Start frontend (Terminal 2)
-npm --prefix frontend run dev    # http://localhost:3000
-
-# 5. Login
-# Browser: http://localhost:3000
-# Credentials: admin / admin123
-```
-
-**Or with Docker**:
-```bash
-docker-compose up --build
-```
-
-## 📦 Installation
-
-### System Requirements
-- **Python**: 3.8+ (tested with 3.13)
-- **Node.js**: 18+ with npm 9+
-- **Optional**: tshark (for PCAP/live modes)
-
-### New Users
-
-```bash
-# Ubuntu/Debian
-sudo apt-get install python3-dev python3-pip nodejs tshark
-
-# macOS
-brew install python@3.13 node tshark
-
-# Windows: Use WSL2 or Docker
-```
-
-```bash
-# Clone & setup
-git clone https://github.com/youruser/DARK.git && cd DARK
-
-# Verify
-python3 check_setup.py
-
-# Install
-npm --prefix backend install
-npm --prefix frontend install
-
-# Run (see Quick Start above)
-```
-
-## ⚙ Configuration
-
-**Backend** (`backend/.env`):
-```ini
-APP_DEFAULT_USER=admin
-APP_DEFAULT_PASS=admin123
-PORT=4000
-HOST=0.0.0.0
-AUTH_TOKEN_TTL_HOURS=8
-NODE_ENV=production
-```
-
-**Frontend** (`frontend/.env.local`):
-```ini
-NEXT_PUBLIC_API_BASE=http://localhost:4000
-```
-
-See [full configuration docs](GETTING_STARTED.md#configuration) for production settings.
-
-## 📖 Usage
-
-### CLI Examples
-
-```bash
-# Simulate traffic
-python3 main.py --mode simulate --sessions 16 --seed 42
-
-# Analyze JSONL dataset
-python3 main.py --mode replay --dataset data.jsonl --top-k 8
-
-# Parse PCAP file (requires tshark)
-python3 main.py --mode pcap --dataset capture.pcap
-
-# Live network capture
-sudo python3 main.py --mode live --interface any --capture-seconds 10
-```
-
-### Web Dashboard
-
-1. Navigate to **http://localhost:3000**
-2. Login with demo credentials
-3. Choose analysis mode from left panel
-4. Configure parameters and submit
-5. Monitor real-time progress
-6. Export results (PDF/CSV/HTML)
-
-### API Usage
-
-```bash
-TOKEN=$(curl -s -X POST http://localhost:4000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"admin123"}' \
-  | jq -r .token)
-
-# Run analysis
-curl -X POST http://localhost:4000/api/sessions/simulate \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"sessions":16,"topK":8}'
-
-# List sessions
-curl http://localhost:4000/api/sessions \
-  -H "Authorization: Bearer $TOKEN" | jq
-```
-
-See [API Documentation](#-api-endpoints) for full reference.
-
-## 🧪 Testing
-
-```bash
-# Python tests
-pytest tests/ -v
-
-# With coverage
-pytest tests/ --cov=. --cov-report=html
-
-# Validation tests
-pytest tests/test_validation.py -v
-
-# Benchmarks
-pytest tests/benchmark_pipeline.py
-```
-
-## 🚢 Deployment
-
-### Development (3 terminals)
-```bash
-npm --prefix backend run dev              # Terminal 1
-npm --prefix frontend run dev             # Terminal 2
-python3 check_setup.py  # Monitor         # Terminal 3
-```
-
-### Production (Docker)
-```bash
-docker-compose up -d
-# Services: localhost:3000 (frontend), localhost:4000 (backend)
-# Data: ./backend/data/ (persisted)
-```
-
-### Enterprise (Kubernetes)
-```bash
-helm install dark ./charts/dark \
-  --namespace production \
-  --values production-values.yaml
-```
-
-## 📚 Documentation
-
-- [**ISSUES_AND_FIXES.md**](ISSUES_AND_FIXES.md) - Complete issue list & solutions
-- [**GETTING_STARTED.md**](GETTING_STARTED.md) - Detailed setup guide
-- [**API.md**](docs/API.md) - Full API documentation
-- [**ARCHITECTURE.md**](docs/ARCHITECTURE.md) - System design
-
-## 🆘 Troubleshooting
-
-### Backend Won't Start
-```bash
-# Check Python
-which python3 && python3 --version
-
-# Verify dependencies
-python3 check_setup.py
-
-# Check port
-lsof -i :4000
-```
-
-### Frontend Connection Failed
-```bash
-# Verify backend running
-curl http://localhost:4000/api/health
-
-# Check config
-cat frontend/.env.local
-# Should have: NEXT_PUBLIC_API_BASE=http://localhost:4000
-```
-
-### PCAP/Live Capture Not Working
-```bash
-# Install tshark
-sudo apt-get install tshark
-
-# Or macOS
-brew install wireshark
-```
-
-See [full troubleshooting guide](GETTING_STARTED.md#troubleshooting) for more.
-
-## 🔒 Security
-
-**Built-in Protection**:
-- ✅ Rate limiting (100 req/15min, 5 for auth)
-- ✅ Input validation on all parameters
-- ✅ SQL injection protection
-- ✅ CORS whitelist-based
-- ✅ Security headers (HSTS, CSP, X-Frame-Options)
-- ✅ Token expiration (8 hours default)
-- ✅ Password hashing with bcrypt
-- ✅ Audit logging of all admin actions
-
-**Production Hardening**:
-1. Change default credentials
-2. Enable HTTPS/TLS
-3. Configure firewall rules
-4. Setup automated backups
-5. Enable security monitoring
-6. Regular security audits
-
-See [Security Policy](docs/SECURITY.md) for details.
-
-## 📖 API Endpoints
-
-| Method | Endpoint | Auth | Role | Description |
-|--------|----------|------|------|-------------|
-| POST | /api/auth/login | ❌ | - | Authenticate user |
-| POST | /api/auth/logout | ✅ | Any | Logout & revoke token |
-| GET | /api/sessions | ✅ | Any | List all sessions |
-| GET | /api/sessions/:id | ✅ | Any | Get session details |
-| POST | /api/sessions/simulate | ✅ | Analyst+ | Create simulation |
-| POST | /api/sessions/replay | ✅ | Analyst+ | Upload & analyze data |
-| GET | /api/sessions/:id/export.pdf | ✅ | Any | Export as PDF |
-| GET | /api/sessions/:id/export.csv | ✅ | Any | Export as CSV |
-| GET | /api/users | ✅ | Admin | List users |
-| POST | /api/users | ✅ | Admin | Create user |
-| PATCH | /api/users/:id | ✅ | Admin | Update user |
-| GET | /api/audit-logs | ✅ | Admin | View audit log |
-
-## 🏗 Architecture
-
-```
-Frontend (Next.js) :3000
-    ↓ REST + WebSocket ↑
-Backend (Express) :4000
-    ├─ Auth System
-    ├─ Job Queue
-    ├─ SQLite DB
-    └─ Python Runner
-         ↓
-Analysis Engine (Python)
-    ├─ Capture (Simulate/Replay/PCAP/Live)
-    ├─ Processing (Features/Correlate/Rank/Estimate)
-    └─ Output (Reports/API/WebSocket)
-```
-
-## 📄 Default Credentials
-
-| Role | Username | Password |
-|------|----------|----------|
-| Admin | admin | admin123 |
-| Analyst | analyst | analyst123 |
-| Viewer | viewer | viewer123 |
-
-⚠️ **Change in production!**
-
-## 📊 Project Stats
-
-- **Backend**: ~800 LOC (Node.js/JavaScript)
-- **Frontend**: ~600 LOC (React/Next.js)
-- **Engine**: ~1200 LOC (Python stdlib only)
-- **Tests**: ~400 LOC (pytest)
-- **Total**: ~3000 LOC
-
-## 🎯 Use Cases
-
-✅ Anonymous routing research  
-✅ Traffic analysis lab demonstrations  
-✅ Cybersecurity education  
-✅ Protocol correlation studies  
-✅ Network behavior analysis  
-
-❌ **NOT** for: Real-world deanonymization or user identification
-
-## 📞 Support
-
-- 📖 [Full Documentation](./docs/)
-- 🐛 [Issue Tracker](https://github.com/youruser/DARK/issues)
-- 💬 [Discussions](https://github.com/youruser/DARK/discussions)
-- 🔐 [Security Policy](./docs/SECURITY.md)
-
-## 📄 License
-
-MIT License - See [LICENSE](LICENSE) for details
-
-## 🙏 Acknowledgments
-
-Built for cybersecurity research and academic study of anonymous routing systems.
+DarkNetTracker is a full-stack cybersecurity research project focused on traffic correlation analysis in controlled anonymous-network laboratory scenarios. It combines a Python-based analysis engine, an Express backend API, SQLite persistence, and a Next.js dashboard for monitoring, exporting, and reviewing analysis sessions.
 
 ---
 
-## 🌟 Resume Highlights
+## Developer Information
 
-✨ Architected full-stack traffic correlation platform with Python analysis engine  
-✨ Implemented Express backend with async job queue and real-time WebSocket  
-✨ Built React/Next.js dashboard with role-based auth and multi-format exports  
-✨ Designed SQLite persistence with audit logging and session management  
-✨ Developed secure API with rate limiting, validation, and error handling  
+**Developer Name:** Aryan Bokolia  
+**College:** National Institute of Technology Karnataka (NITK), Surathkal  
+**Program:** B.Tech in Computer Science and Engineering  
+**Location:** Mangaluru, India  
+**Age:** `Add your age here`  
+**GitHub:** [yoman12357](https://github.com/yoman12357)  
+**Project Repository:** [DarkNetTracker](https://github.com/yoman12357/DarkNetTracker)
 
-**Getting Started**: See [GETTING_STARTED.md](GETTING_STARTED.md)  
-**System Status**: See [ISSUES_AND_FIXES.md](ISSUES_AND_FIXES.md)  
-**Next Steps**: Review [docs/](docs/) directory for architecture and deployment guides
+---
+
+## Project Overview
+
+This project was built as a cybersecurity and network-analysis platform for studying correlation techniques on simulated and controlled traffic datasets. The system supports multiple data-input modes, secure API access, real-time dashboard updates, report export, and structured operational controls.
+
+The project is suitable for:
+
+- cybersecurity research
+- traffic-analysis lab demonstrations
+- packet and session correlation experiments
+- secure full-stack engineering portfolio work
+- academic project presentation and resume use
+
+---
+
+## Hosted Demo
+
+**Live Project Link:** `Add your hosted project link here`
+
+You can send the deployed URL later and replace this line directly.
+
+---
+
+## Core Features
+
+### Analysis Modes
+
+- Simulation-based analysis
+- Replay analysis using structured datasets
+- PCAP file analysis
+- Live traffic capture workflow
+
+### Backend Features
+
+- Express.js REST API
+- Role-based access control
+- Token-based authentication
+- CSRF protection for authenticated write routes
+- CORS restrictions
+- Rate limiting
+- Upload validation
+- Audit logging
+- Database migration support
+- Runtime metrics endpoint
+
+### Frontend Features
+
+- Next.js dashboard
+- Session monitoring interface
+- Visualization of paths and estimates
+- Export actions for CSV and PDF
+- Loading and error states
+- Basic unit-test coverage
+
+### Python Engine Features
+
+- Feature extraction from captured or replayed traffic
+- Correlation scoring
+- Ranked path generation
+- Probabilistic region estimation
+- Runtime validation using Pydantic
+- Structured progress logging
+
+---
+
+## Tech Stack
+
+### Programming Languages
+
+- Python
+- JavaScript
+- SQL
+
+### Frameworks and Libraries
+
+- Next.js
+- React
+- Express.js
+- Node.js
+- WebSockets
+- Vitest
+- Testing Library
+- Pydantic
+
+### Database and Storage
+
+- SQLite
+
+### Security and Operations
+
+- Helmet
+- CSRF protection
+- Rate limiting
+- Request validation
+- Audit logging
+- GitHub Actions
+
+---
+
+## Skills Demonstrated Through This Project
+
+- Full-stack web development
+- Cybersecurity project design
+- Secure backend engineering
+- API development
+- Authentication and authorization
+- Network traffic analysis
+- Data processing pipelines
+- Real-time communication using WebSockets
+- Testing and debugging
+- Documentation and deployment preparation
+
+---
+
+## Project Structure
+
+```text
+DarkNetTracker/
+├── backend/        # Express backend, auth, DB, security, queue, metrics
+├── frontend/       # Next.js dashboard
+├── capture/        # Traffic input modes: simulate, replay, pcap, live
+├── processing/     # Feature extraction, correlation, ranking, estimation
+├── data/           # Sample datasets
+├── tests/          # Python validation and pipeline tests
+├── docs/           # Project report, architecture, deployment, API docs
+├── engine_api.py   # Python bridge used by backend jobs
+├── service.py      # Core analysis pipeline
+└── README.md
+```
+
+---
+
+## How To Run This Project Locally
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/yoman12357/DarkNetTracker.git
+cd DarkNetTracker
+```
+
+### 2. Install Python Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Install Backend Dependencies
+
+```bash
+npm --prefix backend install
+```
+
+### 4. Install Frontend Dependencies
+
+```bash
+npm --prefix frontend install
+```
+
+### 5. Create Environment Files
+
+Backend:
+
+```bash
+cp backend/.env.example backend/.env
+```
+
+Frontend:
+
+```bash
+cp frontend/.env.local.example frontend/.env.local
+```
+
+If you are using Windows PowerShell and `cp` does not work, use:
+
+```powershell
+Copy-Item backend\.env.example backend\.env
+Copy-Item frontend\.env.local.example frontend\.env.local
+```
+
+### 6. Start the Backend
+
+```bash
+npm --prefix backend run dev
+```
+
+The backend runs on:
+
+```text
+http://localhost:4000
+```
+
+### 7. Start the Frontend
+
+```bash
+npm --prefix frontend run dev
+```
+
+The frontend runs on:
+
+```text
+http://localhost:3000
+```
+
+---
+
+## Default Development Login
+
+In local development, the bootstrap endpoint exposes demo credentials.
+
+Typical development accounts:
+
+- Admin: `admin / admin123`
+- Analyst: `analyst / analyst123`
+- Viewer: `viewer / viewer123`
+
+For production deployment, these should be changed immediately.
+
+---
+
+## Useful Commands
+
+### Apply Database Migrations
+
+```bash
+npm --prefix backend run migrate
+```
+
+### Run Python Validation Tests
+
+```bash
+python -m pytest tests/test_validation.py -q
+```
+
+### Run Backend API Smoke Tests
+
+```bash
+npm --prefix backend run test:api
+```
+
+### Run Frontend Unit Tests
+
+```bash
+npm --prefix frontend run test
+```
+
+### Build Frontend for Production
+
+```bash
+npm --prefix frontend run build
+```
+
+---
+
+## API and Security Notes
+
+The backend includes:
+
+- bearer-token authentication
+- CSRF token validation for authenticated write operations
+- restricted CORS policy
+- request validation
+- file upload validation
+- audit logs
+- runtime metrics
+
+Authenticated write requests require:
+
+- `Authorization: Bearer <token>`
+- `X-CSRF-Token: <token returned at login>`
+
+---
+
+## Documentation
+
+- [Implementation Todo](docs/IMPLEMENTATION_TODO.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Deployment Runbook](docs/DEPLOYMENT_RUNBOOK.md)
+- [Troubleshooting](docs/TROUBLESHOOTING.md)
+- [Security Checklist](docs/SECURITY_CHECKLIST.md)
+- [OpenAPI Specification](docs/API_OPENAPI.yaml)
+- [Project Report Source](docs/PROJECT_REPORT.tex)
+- [Project Report PDF](docs/PROJECT_REPORT.pdf)
+
+---
+
+## Verification Status
+
+The current project version has been checked with:
+
+- Python validation tests
+- backend API smoke tests
+- frontend unit tests
+- frontend production build
+- backend startup smoke test
+- login and CSRF-protected logout flow
+
+---
+
+## Resume-Friendly Summary
+
+DarkNetTracker is a cybersecurity research and full-stack engineering project demonstrating secure API design, traffic-analysis workflows, packet/session correlation logic, real-time dashboarding, testing, and deployment-ready project structuring.
+
+---
+
+## Note
+
+This project is intended for controlled research, lab analysis, and academic demonstration. It should be presented as a cybersecurity research platform, not as a real-world deanonymization tool.

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
+import sys
 
 from service import run_pipeline
 
@@ -20,19 +22,29 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
-    args = parse_args()
-    result = run_pipeline(
-        mode=args.mode,
-        dataset=args.dataset,
-        sessions=args.sessions,
-        seed=args.seed,
-        top_k=args.top_k,
-        write_logs=args.write_logs,
-        interface=args.interface,
-        capture_seconds=args.capture_seconds,
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+        stream=sys.stderr,
     )
-    print(json.dumps(result))
-    return 0
+    try:
+        args = parse_args()
+        result = run_pipeline(
+            mode=args.mode,
+            dataset=args.dataset,
+            sessions=args.sessions,
+            seed=args.seed,
+            top_k=args.top_k,
+            write_logs=args.write_logs,
+            interface=args.interface,
+            capture_seconds=args.capture_seconds,
+        )
+        print(json.dumps(result))
+        return 0
+    except Exception as exc:  # pragma: no cover - bridge safety
+        logging.exception("Engine API execution failed")
+        print(json.dumps({"error": str(exc)}))
+        return 1
 
 
 if __name__ == "__main__":

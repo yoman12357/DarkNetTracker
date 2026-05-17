@@ -1,0 +1,86 @@
+openapi: 3.1.0
+info:
+  title: DarkNetTracker API
+  version: 1.1.0
+  description: Production-focused API surface for the DarkNetTracker dashboard.
+servers:
+  - url: http://localhost:4000
+paths:
+  /api/health:
+    get:
+      summary: Service health probe
+      responses:
+        "200":
+          description: Service is alive
+  /api/ready:
+    get:
+      summary: Service readiness probe
+      responses:
+        "200":
+          description: Service is ready
+  /api/docs/openapi.yaml:
+    get:
+      summary: Returns the OpenAPI source document
+      responses:
+        "200":
+          description: YAML specification
+  /api/bootstrap:
+    get:
+      summary: Returns public bootstrap metadata for the frontend
+      responses:
+        "200":
+          description: Bootstrap payload
+  /api/auth/login:
+    post:
+      summary: Authenticate and return bearer plus CSRF tokens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username:
+                  type: string
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Authenticated
+  /api/sessions:
+    get:
+      summary: List analysis sessions
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Session list
+  /api/metrics:
+    get:
+      summary: Returns runtime and request metrics for admins
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Metrics payload
+  /api/sessions/simulate:
+    post:
+      summary: Queue a simulation analysis session
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: header
+          name: X-CSRF-Token
+          required: true
+          schema:
+            type: string
+      responses:
+        "202":
+          description: Session queued
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: token

@@ -19,6 +19,17 @@ import { useDashboard } from "../hooks/useDashboard";
 export default function Page() {
   const dashboard = useDashboard();
 
+  if (dashboard.bootstrapping) {
+    return (
+      <main className="shell">
+        <div className="mx-auto max-w-4xl panel p-8">
+          <div className="text-xs uppercase tracking-[0.25em] text-[#2a9d8f]">Connecting</div>
+          <h1 className="mt-3 text-3xl font-semibold text-[#14213d]">Checking backend availability and security settings</h1>
+        </div>
+      </main>
+    );
+  }
+
   if (!dashboard.authState.loggedIn) {
     return (
       <AuthScreen
@@ -76,6 +87,7 @@ export default function Page() {
               <label className="text-sm">
                 <span className="mb-1 block text-[#5f6b7a]">Sessions</span>
                 <input
+                  aria-label="Number of simulated sessions"
                   className="w-full rounded-xl border border-[rgba(20,33,61,0.1)] px-3 py-2"
                   type="number"
                   value={dashboard.simulateForm.sessions}
@@ -90,6 +102,7 @@ export default function Page() {
               <label className="text-sm">
                 <span className="mb-1 block text-[#5f6b7a]">Seed</span>
                 <input
+                  aria-label="Random seed"
                   className="w-full rounded-xl border border-[rgba(20,33,61,0.1)] px-3 py-2"
                   type="number"
                   value={dashboard.simulateForm.seed}
@@ -104,6 +117,7 @@ export default function Page() {
               <label className="text-sm">
                 <span className="mb-1 block text-[#5f6b7a]">Top paths</span>
                 <input
+                  aria-label="Top ranked paths"
                   className="w-full rounded-xl border border-[rgba(20,33,61,0.1)] px-3 py-2"
                   type="number"
                   value={dashboard.simulateForm.topK}
@@ -131,6 +145,7 @@ export default function Page() {
               Accepts `.jsonl`, `.csv`, `.pcap`, or `.pcapng` and routes them to the correct backend workflow.
             </p>
             <input
+              aria-label="Dataset upload"
               className="mt-4 block w-full text-sm"
               type="file"
               accept=".jsonl,.csv,.pcap,.pcapng"
@@ -158,6 +173,7 @@ export default function Page() {
               <label className="text-sm">
                 <span className="mb-1 block text-[#5f6b7a]">Interface</span>
                 <input
+                  aria-label="Network interface name"
                   className="w-full rounded-xl border border-[rgba(20,33,61,0.1)] px-3 py-2"
                   value={dashboard.liveForm.interfaceName}
                   onChange={(event) =>
@@ -171,6 +187,7 @@ export default function Page() {
               <label className="text-sm">
                 <span className="mb-1 block text-[#5f6b7a]">Capture seconds</span>
                 <input
+                  aria-label="Capture duration in seconds"
                   className="w-full rounded-xl border border-[rgba(20,33,61,0.1)] px-3 py-2"
                   type="number"
                   value={dashboard.liveForm.captureSeconds}
