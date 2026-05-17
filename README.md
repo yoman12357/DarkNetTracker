@@ -12,7 +12,7 @@ DarkNetTracker is a full-stack cybersecurity research project focused on traffic
 **College:** National Institute of Technology Karnataka (NITK), Surathkal  
 **Program:** B.Tech in Computer Science and Engineering  
 **Location:** Mangaluru, India  
-**Age:** `Add your age here`  
+**Age:** 20  
 **GitHub:** [yoman12357](https://github.com/yoman12357)  
 **Project Repository:** [DarkNetTracker](https://github.com/yoman12357/DarkNetTracker)
 
@@ -32,13 +32,6 @@ The project is suitable for:
 
 ---
 
-## Hosted Demo
-
-**Live Project Link:** `Add your hosted project link here`
-
-You can send the deployed URL later and replace this line directly.
-
----
 
 ## Core Features
 
