@@ -1,0 +1,13 @@
+# Traffic Correlation Platform - Python Dependencies
+# This project uses only Python standard library modules (stdlib)
+#
+# No external dependencies required!
+# Tested with Python 3.13+
+#
+# Optional system dependencies:
+# - tshark: For PCAP parsing and live packet capture (install via apt/brew)
+#   Ubuntu/Debian: sudo apt-get install tshark
+#   macOS: brew install wireshark
+#
+# Development dependencies (optional):
+# unittest: Built-in Python testing framework (already included)

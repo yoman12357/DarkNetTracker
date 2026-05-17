@@ -16,6 +16,7 @@ from processing.features import extract_features
 from processing.graph import build_ranked_paths
 from ui.terminal import render_report
 from utils.io import write_jsonl
+from validation import validate_pipeline_inputs
 
 
 def _build_protocol_summary(raw_events: list[Any]) -> list[dict[str, Any]]:
@@ -48,15 +49,22 @@ def run_pipeline(
     interface: str | None = None,
     capture_seconds: int = 8,
 ) -> dict[str, Any]:
+    # Validate all inputs before processing
+    validate_pipeline_inputs(
+        mode=mode,
+        dataset=dataset,
+        sessions=sessions,
+        seed=seed,
+        top_k=top_k,
+        interface=interface,
+        capture_seconds=capture_seconds,
+    )
+
     config = AppConfig(top_k_paths=top_k or AppConfig().top_k_paths)
 
     if mode == "replay":
-        if not dataset:
-            raise ValueError("dataset is required in replay mode")
         raw_events = run_replay(Path(dataset), config)
     elif mode == "pcap":
-        if not dataset:
-            raise ValueError("dataset is required in pcap mode")
         raw_events = load_pcap_events(Path(dataset))
     elif mode == "live":
         raw_events = capture_live_events(interface or "any", capture_seconds)

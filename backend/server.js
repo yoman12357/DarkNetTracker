@@ -25,6 +25,15 @@ import {
 } from "./db.js";
 import { enqueueSessionJob } from "./queue.js";
 import { broadcastEvent, registerSocketUpgrade } from "./socketHub.js";
+import {
+  createRateLimiter,
+  authLimiter,
+  validateUploadSize,
+  validateSessionBody,
+  securityHeaders,
+  corsOptions,
+} from "./security.js";
+import { logger, requestLogger, logError, logSessionEvent, logAuthEvent } from "./logger.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,18 +48,43 @@ const wss = new WebSocketServer({ noServer: true });
 
 registerSocketUpgrade(server, wss);
 
-app.use(cors());
+// Security and logging middleware
+app.use(securityHeaders);
+app.use(requestLogger);
+app.use(cors(corsOptions));
 app.use(express.json({ limit: "2mb" }));
 app.use("/uploads", express.static(uploadsDir));
+
+// Rate limiting
+const limiter = createRateLimiter();
+app.use("/api", limiter);
+app.post("/api/auth/login", authLimiter);
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, uploadsDir),
   filename: (_req, file, cb) => {
-    const safeName = `${Date.now()}-${file.originalname.replace(/\s+/g, "-")}`;
+    const safeName = `${Date.now()}-${file.originalname.replace(/\s+/g, "-").substring(0, 200)}`;
     cb(null, safeName);
   },
 });
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit
+  fileFilter: (_req, file, cb) => {
+    // Allow common data file formats
+    const allowedMimes = [
+      "application/octet-stream",
+      "text/plain",
+      "text/csv",
+      "application/json",
+    ];
+    if (allowedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error(`Unsupported file type: ${file.mimetype}`));
+    }
+  },
+});
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -167,11 +201,28 @@ app.get("/api/bootstrap", (_req, res) => {
 
 app.post("/api/auth/login", (req, res) => {
   const { username, password } = req.body || {};
+
+  // Input validation
+  if (!username || !password || typeof username !== "string" || typeof password !== "string") {
+    logAuthEvent("failed_login", username || "unknown", { reason: "invalid_input" });
+    res.status(400).json({ error: "Username and password are required" });
+    return;
+  }
+
+  if (username.length < 1 || username.length > 100) {
+    logAuthEvent("failed_login", username, { reason: "invalid_username_length" });
+    res.status(400).json({ error: "Invalid username" });
+    return;
+  }
+
   const authSession = login(username, password);
   if (!authSession) {
+    logAuthEvent("failed_login", username, { reason: "invalid_credentials" });
     res.status(401).json({ error: "Invalid credentials" });
     return;
   }
+
+  logAuthEvent("successful_login", username, { userId: authSession.user.id });
   res.json(authSession);
 });
 
@@ -412,33 +463,39 @@ app.get("/api/sessions/:sessionId/export.pdf", async (req, res) => {
   }
 });
 
-app.post("/api/sessions/simulate", requireRole(["admin", "analyst"]), (req, res) => {
-  const {
-    sessions = 18,
-    seed = 7,
-    topK = 8,
-    writeLogs = false,
-  } = req.body || {};
+app.post("/api/sessions/simulate", requireRole(["admin", "analyst"]), validateSessionBody, (req, res) => {
+  try {
+    const {
+      sessions = 18,
+      seed = 7,
+      topK = 8,
+      writeLogs = false,
+    } = req.body || {};
 
-  const session = createSession({
-    id: `sess_${crypto.randomUUID()}`,
-    mode: "simulate",
-    inputLabel: `simulation:${sessions}`,
-    status: "queued",
-    config: { sessions, seed, topK, writeLogs },
-  });
-  recordAuditEvent({
-    actorId: req.user.id,
-    actorUsername: req.user.username,
-    action: "session.create.simulate",
-    targetType: "session",
-    targetId: session.id,
-    metadata: { sessions, seed, topK },
-  });
+    const session = createSession({
+      id: `sess_${crypto.randomUUID()}`,
+      mode: "simulate",
+      inputLabel: `simulation:${sessions}`,
+      status: "queued",
+      config: { sessions, seed, topK, writeLogs },
+    });
+    recordAuditEvent({
+      actorId: req.user.id,
+      actorUsername: req.user.username,
+      action: "session.create.simulate",
+      targetType: "session",
+      targetId: session.id,
+      metadata: { sessions, seed, topK },
+    });
 
-  res.status(202).json(session);
-  broadcastEvent({ type: "session.created", payload: session });
-  enqueueSessionJob(session, broadcastEvent);
+    logSessionEvent("created", session.id, { mode: "simulate", sessions, seed, topK });
+    res.status(202).json(session);
+    broadcastEvent({ type: "session.created", payload: session });
+    enqueueSessionJob(session, broadcastEvent);
+  } catch (error) {
+    logError(error, { endpoint: "/api/sessions/simulate", userId: req.user?.id });
+    res.status(500).json({ error: "Failed to create session" });
+  }
 });
 
 app.post(
